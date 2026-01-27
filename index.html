@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner One Piece Pro</title>
+    <title>Scanner One Piece - Validation</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 15px; }
@@ -13,13 +13,20 @@
         .controls { margin-top: 20px; }
         button { padding: 18px 30px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; background: #f39c12; color: #000; font-weight: bold; width: 80%; max-width: 300px; }
         button:disabled { background: #444; color: #888; }
+        
+        /* Style de la fenêtre de confirmation */
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: #222; padding: 30px; border-radius: 15px; border: 2px solid #f39c12; width: 80%; max-width: 400px; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; justify-content: center; }
+        .btn-ok { background: #2ecc71; color: white; padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; }
+        .btn-no { background: #e74c3c; color: white; padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; }
+
         #status { margin-top: 15px; font-size: 14px; color: #bbb; }
-        #result { margin-top: 15px; font-size: 22px; color: #2ecc71; font-weight: bold; min-height: 30px; }
     </style>
 </head>
 <body>
 
-    <h2 style="color:#f39c12">OPCG COLLECTOR SCAN</h2>
+    <h2 style="color:#f39c12">OPCG SCAN & VERIFY</h2>
     
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
@@ -30,8 +37,18 @@
         <button id="scanBtn">SCANNER LA CARTE</button>
     </div>
 
-    <div id="result"></div>
-    <p id="status">Chargement de la caméra...</p>
+    <p id="status">Chargement...</p>
+
+    <div id="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Carte détectée !</h3>
+            <p id="modalInfo">Vérification...</p>
+            <div class="modal-btns">
+                <button class="btn-ok" id="confirmBtn">CONFIRMER</button>
+                <button class="btn-no" id="cancelBtn">ANNULER</button>
+            </div>
+        </div>
+    </div>
 
     <canvas id="canvas" style="display:none;"></canvas>
 
@@ -39,36 +56,36 @@
         const video = document.getElementById('video');
         const scanBtn = document.getElementById('scanBtn');
         const status = document.getElementById('status');
-        const resultDiv = document.getElementById('result');
+        const modal = document.getElementById('modal');
+        const modalInfo = document.getElementById('modalInfo');
+        const confirmBtn = document.getElementById('confirmBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
         const canvas = document.getElementById('canvas');
 
-        // --- CONFIGURATION ---
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwfoXLM1lEmhZzIKefj4QgeB_pA6wKhdd0lKqZlF7dbxrlsX9Q1oy_qRO1WwkvDDvC-/exec"; 
+        let currentCard = { id: "", nom: "" };
 
-        // 1. Démarrer la caméra
+        // --- METS TON URL ICI ---
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybiv9k2Xy0Hh3RxqiyY7bE0SlR4uIN1hMuPTWwVYZ9ybv3ztJQoVRPqBPKdvaE0usG/exec"; 
+
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 1280, height: 720 } })
-            .then(stream => { video.srcObject = stream; status.innerText = "Place le code (ex: OP01-001) dans le cadre."; })
-            .catch(err => { status.innerText = "Erreur caméra. Vérifie les autorisations HTTPS."; });
+            .then(stream => { video.srcObject = stream; status.innerText = "Cadre le code en bas à droite."; })
+            .catch(err => { status.innerText = "Erreur caméra."; });
 
-        // 2. Fonction pour chercher le nom de la carte via une API publique
         async function fetchCardName(cardId) {
             try {
-                // Utilisation de l'API Open-Source pour One Piece Card Game
                 const resp = await fetch(`https://api.onepiece-cardgame.dev/cards/${cardId}`);
                 if (resp.ok) {
                     const data = await resp.json();
                     return data.name;
                 }
             } catch (e) { console.error("API non disponible"); }
-            return "Carte Inconnue";
+            return "Nom non trouvé";
         }
 
-        // 3. Logique de scan
         scanBtn.addEventListener('click', async () => {
             scanBtn.disabled = true;
-            status.innerText = "Analyse de l'image...";
-            resultDiv.innerText = "";
-
+            status.innerText = "Analyse OCR...";
+            
             const ctx = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -77,41 +94,50 @@
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
                 
-                // Nettoyage et recherche du format OPXX-XXX
-                const cleanedText = text.toUpperCase().replace(/\s/g, '');
+                // FILTRE DE NETTOYAGE : Majuscules, suppression espaces, correction erreurs courantes
+                let cleanedText = text.toUpperCase().replace(/\s/g, '');
+                cleanedText = cleanedText.replace(/0P/g, "OP"); // Corrige le "0" en "O"
+                
                 const match = cleanedText.match(/[A-Z]{2}\d{2}-\d{3}/g);
 
                 if (match) {
-                    const cardId = match[0];
-                    status.innerText = "Code trouvé : " + cardId + ". Recherche du nom...";
+                    currentCard.id = match[0];
+                    currentCard.nom = await fetchCardName(currentCard.id);
                     
-                    const cardName = await fetchCardName(cardId);
-                    resultDiv.innerText = cardName;
-                    
-                    await sendToSheets(cardId, cardName);
+                    // Affichage de la confirmation
+                    modalInfo.innerHTML = `ID : <b>${currentCard.id}</b><br>Nom : <b>${currentCard.nom}</b>`;
+                    modal.style.display = "flex";
                 } else {
-                    status.innerText = "Code non détecté. Rapproche-toi et évite les reflets.";
+                    status.innerText = "Non détecté. Essaie encore.";
                 }
             } catch (error) {
-                status.innerText = "Erreur OCR.";
+                status.innerText = "Erreur d'analyse.";
             } finally {
                 scanBtn.disabled = false;
             }
         });
 
-        async function sendToSheets(id, name) {
-            status.innerText = "Envoi au Google Sheets...";
+        // Bouton CONFIRMER
+        confirmBtn.addEventListener('click', async () => {
+            modal.style.display = "none";
+            status.innerText = "Envoi au Sheets...";
             try {
                 await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    body: JSON.stringify({ id: id, nom: name })
+                    body: JSON.stringify({ id: currentCard.id, nom: currentCard.nom })
                 });
-                status.innerText = "Enregistré avec succès !";
+                status.innerText = "Ajouté : " + currentCard.nom;
             } catch (e) {
-                status.innerText = "Erreur de connexion Sheets.";
+                status.innerText = "Erreur Sheets.";
             }
-        }
+        });
+
+        // Bouton ANNULER
+        cancelBtn.addEventListener('click', () => {
+            modal.style.display = "none";
+            status.innerText = "Scan annulé.";
+        });
     </script>
 </body>
 </html>
