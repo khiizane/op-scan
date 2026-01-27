@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPCG Card Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        #video-container { position: relative; display: inline-block; width: 100%; max-width: 500px; border: 3px solid #f39c12; border-radius: 15px; overflow: hidden; }
+        video { width: 100%; display: block; }
+        #overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 40%; border: 2px dashed rgba(255,255,255,0.5); pointer-events: none; }
+        .controls { margin-top: 20px; }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; background: #f39c12; color: black; font-weight: bold; transition: 0.3s; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        #status { margin-top: 15px; font-style: italic; color: #bdc3c7; }
+        #result { margin-top: 10px; font-size: 20px; color: #2ecc71; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>One Piece Scanner</h1>
+    
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+        <div id="overlay"></div> </div>
+
+    <div class="controls">
+        <button id="scanBtn">SCANNER LA CARTE</button>
+    </div>
+
+    <p id="status">Initialisation de la caméra...</p>
+    <div id="result"></div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const scanBtn = document.getElementById('scanBtn');
+        const status = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+        const canvas = document.getElementById('canvas');
+
+        // --- CONFIGURATION ---
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybiv9k2Xy0Hh3RxqiyY7bE0SlR4uIN1hMuPTWwVYZ9ybv3ztJQoVRPqBPKdvaE0usG/exec"; // <--- METS TON URL ICI
+
+        // 1. Démarrer la caméra
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(stream => {
+                video.srcObject = stream;
+                status.innerText = "Prêt ! Cadre le code (ex: OP01-001) dans le rectangle.";
+            })
+            .catch(err => {
+                status.innerText = "Erreur caméra : " + err;
+            });
+
+        // 2. Logique de scan
+        scanBtn.addEventListener('click', async () => {
+            scanBtn.disabled = true;
+            status.innerText = "Capture de l'image...";
+            resultDiv.innerText = "";
+
+            // On dessine la vidéo sur le canvas pour analyser l'image
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            status.innerText = "Reconnaissance du texte (OCR)...";
+
+            try {
+                // Utilisation de Tesseract pour lire l'image
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+                
+                // On cherche un motif qui ressemble à un code de carte (ex: OP01-020)
+                const cardCodeMatch = text.match(/[A-Z]{2}\d{2}-\d{3}/g);
+
+                if (cardCodeMatch) {
+                    const cardId = cardCodeMatch[0];
+                    resultDiv.innerText = "Code détecté : " + cardId;
+                    await sendToSheets(cardId);
+                } else {
+                    status.innerText = "Code non trouvé. Réessaie en éclairant mieux la carte.";
+                    console.log("Texte brut détecté :", text);
+                }
+            } catch (error) {
+                status.innerText = "Erreur d'analyse.";
+                console.error(error);
+            } finally {
+                scanBtn.disabled = false;
+            }
+        });
+
+        // 3. Envoi vers Google Sheets
+        async function sendToSheets(id) {
+            status.innerText = "Envoi vers Google Sheets...";
+            
+            try {
+                // On utilise 'no-cors' car Google Sheets ne renvoie pas les bons headers CORS
+                // mais les données seront quand même enregistrées.
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id, nom: "Carte scannée" })
+                });
+                status.innerText = "Ajouté avec succès !";
+            } catch (e) {
+                status.innerText = "Erreur lors de l'envoi au tableau.";
+            }
+        }
+    </script>
+</body>
+</html>
