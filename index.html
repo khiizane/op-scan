@@ -3,26 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner Pro - Fix</title>
+    <title>OPCG Scanner - Large Frame</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; overflow-x: hidden; }
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; overflow: hidden; }
         .header { background: #f39c12; color: black; padding: 10px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        
         #video-container { position: relative; width: 100%; max-width: 500px; margin: auto; background: black; line-height: 0; }
         video { width: 100%; height: auto; }
+        
+        /* CADRE PLUS LARGE ET VISIBLE */
         #focus-zone { 
-            position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); 
-            width: 80%; height: 60px; border: 2px solid #f39c12; 
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10;
+            position: absolute; 
+            top: 55%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            width: 85%; 
+            height: 120px; /* Doublé la hauteur */
+            border: 3px solid #f39c12; 
+            border-radius: 8px;
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.7); 
+            pointer-events: none; 
+            z-index: 10;
         }
-        .ui { padding: 15px; background: #1a1a1a; }
+
+        /* Animation pour aider au cadrage */
+        .scanning-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: rgba(243, 156, 18, 0.5);
+            top: 0;
+            animation: scanMove 2s infinite linear;
+        }
+
+        @keyframes scanMove {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+
+        .ui { padding: 15px; background: #1a1a1a; border-top: 2px solid #f39c12; }
         button { padding: 16px; width: 90%; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; margin: 5px 0; }
         .btn-scan { background: #f39c12; color: black; font-size: 18px; }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
         .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; }
-        #status { margin: 10px 0; color: #f1c40f; font-weight: bold; min-height: 20px; font-size: 14px; }
-        .controls { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; }
+        #status { margin: 10px 0; color: #f1c40f; font-weight: bold; font-size: 14px; }
+        
+        .controls { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; }
         input[type=range] { width: 50%; accent-color: #f39c12; }
+
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; }
         input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
@@ -31,28 +59,30 @@
 <body>
 
     <div class="header">
-        <span>OPCG COLLECTOR</span>
-        <button class="btn-tool" id="flashBtn">🔦 FLASH OFF</button>
+        <span>OPCG SCAN V7</span>
+        <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
-        <div id="focus-zone"></div>
+        <div id="focus-zone">
+            <div class="scanning-line"></div>
+        </div>
     </div>
 
     <div class="ui">
         <div class="controls">
-            <label>ZOOM</label>
+            <span>ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
-        <button class="btn-scan" id="scanBtn">📸 SCANNER LE CODE</button>
-        <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
+        <button class="btn-scan" id="scanBtn">📸 ANALYSER LA ZONE</button>
+        <button class="btn-manual" onclick="showManual()">⌨️ CLAVIER</button>
         <div id="status">Prêt</div>
     </div>
 
     <div id="modalManual" class="modal">
         <div class="modal-box">
-            <h3 style="color:#f39c12">Entrer le code</h3>
+            <h3 style="color:#f39c12">Code de la carte</h3>
             <input type="text" id="manualInput" placeholder="OP01-001">
             <button class="btn-scan" onclick="submitManual()">ENVOYER</button>
             <button style="background:#e74c3c; color:white;" onclick="hideManual()">ANNULER</button>
@@ -70,50 +100,27 @@
         const zoomRange = document.getElementById('zoomRange');
         let track = null;
 
-        // 1. Démarrage caméra simplifié (plus compatible)
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } 
+                    video: { facingMode: "environment", width: { ideal: 1920 } } 
                 });
                 video.srcObject = stream;
                 track = stream.getVideoTracks()[0];
-                
-                // On attend un peu que la caméra soit prête pour check les options
-                setTimeout(() => {
-                    const caps = track.getCapabilities ? track.getCapabilities() : {};
-                    if (!caps.zoom) zoomRange.disabled = true;
-                    if (!caps.torch) flashBtn.style.display = "none";
-                }, 500);
-
-            } catch (err) {
-                status.innerText = "Erreur caméra : " + err.message;
-            }
+            } catch (err) { status.innerText = "Caméra bloquée."; }
         }
-
         startCamera();
 
-        // 2. Zoom avec gestion d'erreur
-        zoomRange.oninput = async () => {
-            if (track) {
-                try {
-                    await track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
-                } catch (e) { console.warn("Zoom non supporté"); }
-            }
+        zoomRange.oninput = () => {
+            if (track) track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }).catch(() => {});
         };
 
-        // 3. Flash avec gestion d'erreur
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (track) {
-                try {
-                    isFlashOn = !isFlashOn;
-                    await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
-                    flashBtn.innerText = isFlashOn ? "🔦 FLASH ON" : "🔦 FLASH OFF";
-                    flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
-                } catch (e) {
-                    alert("Flash non supporté sur cet appareil.");
-                }
+                isFlashOn = !isFlashOn;
+                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }).catch(() => alert("Flash indisponible"));
+                flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
             }
         };
 
@@ -128,28 +135,36 @@
                     mode: 'no-cors',
                     body: JSON.stringify({ id: cardId })
                 });
-                status.innerText = "✅ " + cardId + " envoyé !";
+                status.innerText = "✅ " + cardId + " ajouté !";
             } catch (e) { status.innerText = "❌ Erreur Sheets."; }
         }
 
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "Analyse...";
+            status.innerText = "Lecture en cours...";
             const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth; 
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
+            
+            // On capture une zone un peu plus large que le cadre visuel pour plus de sécurité
+            const scale = video.videoWidth / video.clientWidth;
+            const w = video.clientWidth * 0.9 * scale;
+            const h = 150 * scale; 
+            const x = (video.videoWidth - w) / 2;
+            const y = (video.videoHeight * 0.55) - (h / 2);
+
+            canvas.width = w; 
+            canvas.height = h;
+            ctx.drawImage(video, x, y, w, h, 0, 0, w, h);
             
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/Q/g, "O").replace(/0P/g, "OP");
                 let match = clean.match(/[A-Z]{1,2}\d{2}-\d{3}/);
                 if (match) sendData(match[0]);
-                else status.innerText = "Code non trouvé.";
+                else status.innerText = "Code non détecté. Rapprochez-vous.";
             } catch (e) { status.innerText = "Erreur OCR."; }
         };
 
         function submitManual() {
-            const val = document.getElementById('manualInput').value;
+            const val = document.getElementById('manualInput').value.toUpperCase();
             if (val) { hideManual(); sendData(val); }
         }
     </script>
