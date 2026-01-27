@@ -3,48 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner Pro - Flash & Zoom</title>
+    <title>OPCG Scanner Pro - Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; }
-        .header { background: #f39c12; color: black; padding: 15px; font-weight: bold; font-size: 1.2em; display: flex; justify-content: space-between; align-items: center; }
-        #video-container { position: relative; width: 100%; max-width: 500px; margin: auto; background: black; }
-        video { width: 100%; display: block; }
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; overflow-x: hidden; }
+        .header { background: #f39c12; color: black; padding: 10px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        #video-container { position: relative; width: 100%; max-width: 500px; margin: auto; background: black; line-height: 0; }
+        video { width: 100%; height: auto; }
         #focus-zone { 
             position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); 
             width: 80%; height: 60px; border: 2px solid #f39c12; 
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; 
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10;
         }
-        .ui { padding: 20px; background: #1a1a1a; }
-        .controls { display: flex; justify-content: space-around; align-items: center; margin-bottom: 15px; }
-        button { 
-            padding: 18px; width: 90%; border-radius: 12px; border: none; 
-            font-weight: bold; font-size: 16px; cursor: pointer; margin: 5px 0; 
-        }
-        .btn-scan { background: #f39c12; color: black; }
+        .ui { padding: 15px; background: #1a1a1a; }
+        button { padding: 16px; width: 90%; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; margin: 5px 0; }
+        .btn-scan { background: #f39c12; color: black; font-size: 18px; }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
-        .btn-tool { background: #444; color: white; width: auto; padding: 10px 20px; font-size: 14px; }
-        #status { margin-top: 10px; color: #f1c40f; font-weight: bold; min-height: 20px; }
-        
-        input[type=range] { width: 60%; accent-color: #f39c12; }
-
-        .modal { 
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; 
-        }
+        .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; }
+        #status { margin: 10px 0; color: #f1c40f; font-weight: bold; min-height: 20px; font-size: 14px; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; }
+        input[type=range] { width: 50%; accent-color: #f39c12; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; }
-        input[type=text] { 
-            width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; 
-            text-align: center; border-radius: 10px; border: 1px solid #f39c12; 
-            background: black; color: white; margin-bottom: 20px; 
-        }
+        input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
     <div class="header">
         <span>OPCG COLLECTOR</span>
-        <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
+        <button class="btn-tool" id="flashBtn">🔦 FLASH OFF</button>
     </div>
 
     <div id="video-container">
@@ -54,10 +42,9 @@
 
     <div class="ui">
         <div class="controls">
-            <label>Zoom</label>
-            <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1">
+            <label>ZOOM</label>
+            <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
-        
         <button class="btn-scan" id="scanBtn">📸 SCANNER LE CODE</button>
         <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
         <div id="status">Prêt</div>
@@ -76,48 +63,56 @@
 
     <script>
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdhkk831p1QmeLsTSQoXaXrKAvms-K0toW33UMp_6WGHkgRworeKghHgkpzJYsvdOr/exec";
-        
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const status = document.getElementById('status');
         const flashBtn = document.getElementById('flashBtn');
         const zoomRange = document.getElementById('zoomRange');
-        
         let track = null;
 
-        // Lancer la caméra avec support Zoom/Flash
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } })
-            .then(s => {
-                video.srcObject = s;
-                track = s.getVideoTracks()[0];
+        // 1. Démarrage caméra simplifié (plus compatible)
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                video.srcObject = stream;
+                track = stream.getVideoTracks()[0];
                 
-                // Vérifier si le zoom est supporté
-                const capabilities = track.getCapabilities();
-                if (capabilities.zoom) {
-                    zoomRange.min = capabilities.zoom.min;
-                    zoomRange.max = capabilities.zoom.max;
-                    zoomRange.step = capabilities.zoom.step;
-                } else {
-                    zoomRange.disabled = true;
-                }
-            });
+                // On attend un peu que la caméra soit prête pour check les options
+                setTimeout(() => {
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+                    if (!caps.zoom) zoomRange.disabled = true;
+                    if (!caps.torch) flashBtn.style.display = "none";
+                }, 500);
 
-        // Fonction Zoom
-        zoomRange.oninput = () => {
+            } catch (err) {
+                status.innerText = "Erreur caméra : " + err.message;
+            }
+        }
+
+        startCamera();
+
+        // 2. Zoom avec gestion d'erreur
+        zoomRange.oninput = async () => {
             if (track) {
-                track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
+                try {
+                    await track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
+                } catch (e) { console.warn("Zoom non supporté"); }
             }
         };
 
-        // Fonction Flash
+        // 3. Flash avec gestion d'erreur
+        let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (track) {
-                const settings = track.getSettings();
-                const currentTorch = settings.torch || false;
                 try {
-                    await track.applyConstraints({ advanced: [{ torch: !currentTorch }] });
+                    isFlashOn = !isFlashOn;
+                    await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
+                    flashBtn.innerText = isFlashOn ? "🔦 FLASH ON" : "🔦 FLASH OFF";
+                    flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
                 } catch (e) {
-                    alert("Le flash n'est pas disponible sur ce navigateur.");
+                    alert("Flash non supporté sur cet appareil.");
                 }
             }
         };
@@ -129,4 +124,34 @@
             status.innerText = "⏳ Envoi de " + cardId + "...";
             try {
                 await fetch(GOOGLE_SCRIPT_URL, {
-                    method: '
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({ id: cardId })
+                });
+                status.innerText = "✅ " + cardId + " envoyé !";
+            } catch (e) { status.innerText = "❌ Erreur Sheets."; }
+        }
+
+        document.getElementById('scanBtn').onclick = async () => {
+            status.innerText = "Analyse...";
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth; 
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            try {
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+                let clean = text.toUpperCase().replace(/\s/g, '').replace(/Q/g, "O").replace(/0P/g, "OP");
+                let match = clean.match(/[A-Z]{1,2}\d{2}-\d{3}/);
+                if (match) sendData(match[0]);
+                else status.innerText = "Code non trouvé.";
+            } catch (e) { status.innerText = "Erreur OCR."; }
+        };
+
+        function submitManual() {
+            const val = document.getElementById('manualInput').value;
+            if (val) { hideManual(); sendData(val); }
+        }
+    </script>
+</body>
+</html>
