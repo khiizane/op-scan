@@ -124,16 +124,43 @@
             document.getElementById('modalManual').style.display = "none";
         }
 
-        async function fetchAndConfirm(cardId) {
-            status.innerText = "Recherche : " + cardId;
-            try {
-                const res = await fetch(`https://api.onepiece-cardgame.dev/cards/${cardId}`).then(r => r.json());
-                currentCard = { id: cardId, nom: res.name || "Inconnue" };
-                document.getElementById('confirmInfo').innerHTML = `ID : <b>${currentCard.id}</b><br>Nom : ${currentCard.nom}`;
-                document.getElementById('modalConfirm').style.display = "flex";
-            } catch (e) {
-                alert("Code non trouvé dans la base de données.");
-            }
+        // Remplace la fonction fetchAndConfirm dans ton code HTML par celle-ci :
+
+async function fetchAndConfirm(cardId) {
+    status.innerText = "Recherche des détails sur le web...";
+    try {
+        // On interroge la base de données internationale
+        const res = await fetch(`https://api.onepiece-cardgame.dev/cards/${cardId}`);
+        const data = await res.json();
+
+        if (data && data.name) {
+            // On prépare l'objet complet avec les infos récupérées
+            currentCard = {
+                id: cardId,
+                nom: data.name,
+                rarete: data.rarity || "N/A",
+                couleur: data.color || "N/A",
+                type: data.type || "N/A"
+            };
+
+            // Affichage détaillé dans la fenêtre de confirmation
+            document.getElementById('confirmInfo').innerHTML = `
+                <div style="text-align:left; font-size:14px; background:#333; padding:10px; border-radius:8px;">
+                    <b style="color:#f39c12">Nom :</b> ${currentCard.nom}<br>
+                    <b style="color:#f39c12">Rareté :</b> ${currentCard.rarete}<br>
+                    <b style="color:#f39c12">Couleur :</b> ${currentCard.couleur}<br>
+                    <b style="color:#f39c12">Type :</b> ${currentCard.type}
+                </div>
+            `;
+            document.getElementById('modalConfirm').style.display = "flex";
+        } else {
+            alert("Carte introuvable. Vérifiez le code.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erreur lors de la récupération des données internet.");
+    }
+}
         }
 
         // Action Scan
