@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner - Hybride</title>
+    <title>OPCG Scanner - Ultra</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #121212; color: white; margin: 0; }
@@ -11,30 +11,23 @@
         
         #video-container { position: relative; width: 100%; max-width: 500px; margin: auto; background: #000; overflow: hidden; }
         video { width: 100%; height: auto; display: block; }
-        
-        #focus-zone { 
-            position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); 
-            width: 75%; height: 55px; border: 2px solid #f39c12; border-radius: 5px;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5); pointer-events: none; z-index: 5;
-        }
+        #focus-zone { position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); width: 75%; height: 55px; border: 2px solid #f39c12; border-radius: 5px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.5); pointer-events: none; z-index: 5; }
 
-        .ui-panel { padding: 15px; background: #1a1a1a; }
-        .controls-row { display: flex; align-items: center; justify-content: space-around; margin-bottom: 15px; }
-        
-        button { cursor: pointer; font-weight: bold; border: none; border-radius: 12px; transition: 0.2s; }
-        #scanBtn { padding: 18px; font-size: 18px; background: #f39c12; color: #000; width: 90%; margin-bottom: 10px; }
-        #manualBtn { padding: 10px; font-size: 14px; background: #333; color: #f39c12; border: 1px solid #f39c12; width: 60%; }
+        .ui-panel { padding: 15px; background: #1a1a1a; border-radius: 20px 20px 0 0; margin-top: -10px; position: relative; z-index: 10; }
+        button { cursor: pointer; font-weight: bold; border: none; border-radius: 12px; transition: 0.2s; margin-bottom: 10px; }
+        #scanBtn { padding: 18px; font-size: 18px; background: #f39c12; color: #000; width: 95%; }
+        #manualBtn { padding: 12px; font-size: 14px; background: #333; color: #f39c12; border: 1px solid #f39c12; width: 70%; }
 
-        #debug-canvas-container { border: 1px solid #555; background: #000; width: 150px; height: 40px; }
-        #canvas { width: 100%; height: 100%; object-fit: contain; }
+        /* Modal Styles */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 100; justify-content: center; align-items: center; overflow-y: auto; }
+        .modal-box { background: #222; padding: 20px; border-radius: 15px; border: 2px solid #f39c12; width: 90%; max-width: 400px; margin: 20px; }
+        
+        #card-image { width: 150px; height: auto; border-radius: 10px; margin-bottom: 15px; border: 1px solid #444; }
+        .card-details { text-align: left; font-size: 14px; background: #111; padding: 10px; border-radius: 8px; margin-bottom: 15px; line-height: 1.6; }
+        .card-details b { color: #f39c12; }
 
-        /* Modals */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; justify-content: center; align-items: center; }
-        .modal-box { background: #222; padding: 25px; border-radius: 15px; border: 2px solid #f39c12; width: 85%; max-width: 400px; }
-        
-        input[type="text"] { width: 90%; padding: 12px; margin: 15px 0; border-radius: 8px; border: 1px solid #f39c12; background: #000; color: white; text-align: center; font-size: 18px; text-transform: uppercase; }
-        
-        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+        input[type="text"] { width: 85%; padding: 15px; margin: 15px 0; border-radius: 10px; border: 1px solid #f39c12; background: #000; color: white; text-align: center; font-size: 20px; }
+        .btn-group { display: flex; gap: 10px; }
         .btn-ok { background: #2ecc71; flex: 1; padding: 15px; border-radius: 10px; color: white; }
         .btn-no { background: #e74c3c; flex: 1; padding: 15px; border-radius: 10px; color: white; }
         #status { font-size: 13px; color: #aaa; margin-top: 10px; }
@@ -43,7 +36,7 @@
 <body>
 
     <div class="header">
-        <span style="color:#f39c12; font-weight: bold;">OPCG SCAN HYBRIDE</span>
+        <span style="color:#f39c12; font-weight: bold;">OPCG SCAN V4</span>
         <button id="flashBtn" style="background:#333; color:#f39c12; border:1px solid #f39c12; border-radius:5px; padding:5px 10px;">🔦 FLASH</button>
     </div>
     
@@ -53,27 +46,22 @@
     </div>
 
     <div class="ui-panel">
-        <div class="controls-row">
-            <div>
-                <label style="font-size:10px">ZOOM</label><br>
-                <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1">
-            </div>
-            <div id="debug-canvas-container">
-                <canvas id="canvas"></canvas>
-            </div>
+        <div style="margin-bottom: 10px;">
+            <label style="font-size:10px">ZOOM</label>
+            <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1" style="width: 60%; accent-color: #f39c12;">
         </div>
-        
-        <button id="scanBtn">ANALYSER PAR CAMÉRA</button>
+        <button id="scanBtn">📸 SCANNER LE CODE</button>
         <button id="manualBtn">⌨️ SAISIE MANUELLE</button>
-        <p id="status">Prêt</p>
+        <p id="status">Prêt à scanner</p>
     </div>
 
     <div id="modalConfirm" class="modal">
         <div class="modal-box">
-            <h3 style="color:#f39c12">Confirmer la carte</h3>
-            <p id="confirmInfo">Chargement...</p>
+            <h3 id="confirmTitle" style="color:#f39c12; margin-top:0;">Vérification...</h3>
+            <img id="card-image" src="" alt="Image de la carte">
+            <div id="confirmDetails" class="card-details">Chargement des infos...</div>
             <div class="btn-group">
-                <button class="btn-ok" id="btnConfirmOk">AJOUTER</button>
+                <button class="btn-ok" id="btnConfirmOk">AJOUTER AU DOC</button>
                 <button class="btn-no" onclick="closeModals()">ANNULER</button>
             </div>
         </div>
@@ -82,127 +70,123 @@
     <div id="modalManual" class="modal">
         <div class="modal-box">
             <h3 style="color:#f39c12">Entrer le code</h3>
-            <p style="font-size: 12px; color: #888;">Format : OP01-001</p>
-            <input type="text" id="manualInput" placeholder="EX: OP05-060">
+            <p style="font-size: 11px; color: #888;">Format : OP05-060 ou ST01-001</p>
+            <input type="text" id="manualInput" placeholder="EX: OP01-001">
             <div class="btn-group">
-                <button class="btn-ok" id="btnManualOk">CHERCHER</button>
+                <button class="btn-ok" id="btnManualSearch">RECHERCHER</button>
                 <button class="btn-no" onclick="closeModals()">FERMER</button>
             </div>
         </div>
     </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video');
         const zoomRange = document.getElementById('zoomRange');
         const flashBtn = document.getElementById('flashBtn');
         const scanBtn = document.getElementById('scanBtn');
-        const manualBtn = document.getElementById('manualBtn');
         const status = document.getElementById('status');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
         let track = null;
-        let currentCard = { id: "", nom: "" };
+        let currentCard = {};
 
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybiv9k2Xy0Hh3RxqiyY7bE0SlR4uIN1hMuPTWwVYZ9ybv3ztJQoVRPqBPKdvaE0usG/exec";
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdhkk831p1QmeLsTSQoXaXrKAvms-K0toW33UMp_6WGHkgRworeKghHgkpzJYsvdOr/exec";
 
         // Initialisation Caméra
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } })
-        .then(stream => {
-            video.srcObject = stream;
-            track = stream.getVideoTracks()[0];
-        });
+        .then(stream => { video.srcObject = stream; track = stream.getVideoTracks()[0]; })
+        .catch(() => status.innerText = "Erreur Caméra.");
 
-        // Flash & Zoom
-        flashBtn.onclick = async () => { if (track) { const cap = track.getCapabilities(); if (cap.torch) { const torchOn = !track.getSettings().torch; track.applyConstraints({ advanced: [{ torch: torchOn }] }); flashBtn.style.background = torchOn ? "#f39c12" : "#333"; } } };
+        // Zoom & Flash
         zoomRange.oninput = () => { if (track) track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); };
+        flashBtn.onclick = async () => { if (track) { const settings = track.getSettings(); await track.applyConstraints({ advanced: [{ torch: !settings.torch }] }); flashBtn.style.background = !settings.torch ? "#333" : "#f39c12"; } };
 
-        // --- FONCTIONS LOGIQUE ---
+        function closeModals() { document.querySelectorAll('.modal').forEach(m => m.style.display = "none"); }
 
-        function closeModals() {
-            document.getElementById('modalConfirm').style.display = "none";
-            document.getElementById('modalManual').style.display = "none";
-        }
+        // --- LA LOGIQUE DE RECHERCHE AMÉLIORÉE ---
+        async function searchCard(cardId) {
+            // Nettoyage automatique du format pour l'API
+            cardId = cardId.toUpperCase().trim();
+            if (!cardId.includes('-') && cardId.length > 4) {
+                cardId = cardId.slice(0, 4) + '-' + cardId.slice(4);
+            }
 
-        // Remplace la fonction fetchAndConfirm dans ton code HTML par celle-ci :
-
-async function fetchAndConfirm(cardId) {
-    status.innerText = "Recherche des détails sur le web...";
-    try {
-        // On interroge la base de données internationale
-        const res = await fetch(`https://api.onepiece-cardgame.dev/cards/${cardId}`);
-        const data = await res.json();
-
-        if (data && data.name) {
-            // On prépare l'objet complet avec les infos récupérées
-            currentCard = {
-                id: cardId,
-                nom: data.name,
-                rarete: data.rarity || "N/A",
-                couleur: data.color || "N/A",
-                type: data.type || "N/A"
-            };
-
-            // Affichage détaillé dans la fenêtre de confirmation
-            document.getElementById('confirmInfo').innerHTML = `
-                <div style="text-align:left; font-size:14px; background:#333; padding:10px; border-radius:8px;">
-                    <b style="color:#f39c12">Nom :</b> ${currentCard.nom}<br>
-                    <b style="color:#f39c12">Rareté :</b> ${currentCard.rarete}<br>
-                    <b style="color:#f39c12">Couleur :</b> ${currentCard.couleur}<br>
-                    <b style="color:#f39c12">Type :</b> ${currentCard.type}
-                </div>
-            `;
+            status.innerText = "Recherche : " + cardId;
             document.getElementById('modalConfirm').style.display = "flex";
-        } else {
-            alert("Carte introuvable. Vérifiez le code.");
-        }
-    } catch (e) {
-        console.error(e);
-        alert("Erreur lors de la récupération des données internet.");
-    }
-}
+            document.getElementById('confirmDetails').innerText = "Recherche en cours...";
+            document.getElementById('card-image').style.display = "none";
+
+            try {
+                // Utilisation d'une API de secours si la première échoue
+                const response = await fetch(`https://api.onepiece-cardgame.dev/cards/${cardId}`);
+                if (!response.ok) throw new Error("Non trouvé");
+                const data = await response.json();
+
+                currentCard = {
+                    id: cardId,
+                    nom: data.name || "Inconnu",
+                    rarete: data.rarity || "N/A",
+                    couleur: data.color || "N/A",
+                    type: data.type || "N/A",
+                    image: data.image_url || `https://limitlesstcg.s3.amazonaws.com/one-piece/${cardId.split('-')[0]}/${cardId}.png`
+                };
+
+                document.getElementById('confirmTitle').innerText = "Carte Identifiée !";
+                document.getElementById('card-image').src = currentCard.image;
+                document.getElementById('card-image').style.display = "inline-block";
+                document.getElementById('confirmDetails').innerHTML = `
+                    <b>Nom:</b> ${currentCard.nom}<br>
+                    <b>Rareté:</b> ${currentCard.rarete}<br>
+                    <b>Couleur:</b> ${currentCard.couleur}<br>
+                    <b>Type:</b> ${currentCard.type}
+                `;
+            } catch (e) {
+                document.getElementById('confirmTitle').innerText = "Erreur";
+                document.getElementById('confirmDetails').innerHTML = "La carte <b>" + cardId + "</b> n'existe pas ou l'API est hors-ligne.<br><br>Vérifiez le format (ex: OP01-001).";
+                document.getElementById('btnConfirmOk').style.display = "none";
+            }
         }
 
         // Action Scan
         scanBtn.onclick = async () => {
             scanBtn.disabled = true;
             const scale = video.videoWidth / video.clientWidth;
-            const w = 350 * scale; const h = 80 * scale;
+            const w = 350 * scale; const h = 70 * scale;
             const x = (video.videoWidth - w) / 2;
             const y = (video.videoHeight * 0.6) - (h / 2);
             canvas.width = w; canvas.height = h;
-            ctx.filter = 'grayscale(1) contrast(2.5)';
+            ctx.filter = 'grayscale(1) contrast(2)';
             ctx.drawImage(video, x, y, w, h, 0, 0, w, h);
-
+            
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
                 let cleaned = text.toUpperCase().replace(/\s/g, '').replace(/0P/g, "OP");
                 const match = cleaned.match(/[A-Z]{1,2}\d{2}-\d{3}/);
-                if (match) await fetchAndConfirm(match[0]);
-                else status.innerText = "Non détecté. Réessaie ou tape à la main.";
+                if (match) {
+                    await searchCard(match[0]);
+                } else {
+                    status.innerText = "Code non détecté. Utilisez le mode manuel.";
+                }
             } catch (e) { status.innerText = "Erreur OCR."; }
             scanBtn.disabled = false;
         };
 
         // Action Manuelle
-        manualBtn.onclick = () => { document.getElementById('modalManual').style.display = "flex"; };
-        
-        document.getElementById('btnManualOk').onclick = async () => {
-            const input = document.getElementById('manualInput').value.toUpperCase().trim();
-            if (/[A-Z]{1,2}\d{2}-\d{3}/.test(input)) {
-                closeModals();
-                await fetchAndConfirm(input);
-            } else {
-                alert("Format invalide (ex: OP01-001)");
-            }
+        document.getElementById('manualBtn').onclick = () => { document.getElementById('modalManual').style.display = "flex"; };
+        document.getElementById('btnManualSearch').onclick = () => {
+            const input = document.getElementById('manualInput').value;
+            if (input) { closeModals(); searchCard(input); }
         };
 
-        // Envoi final au Google Sheets
+        // Envoi Sheets
         document.getElementById('btnConfirmOk').onclick = async () => {
             closeModals();
-            status.innerText = "Envoi au tableau...";
+            status.innerText = "Ajout au Google Sheets...";
             await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(currentCard)});
-            status.innerText = "Ajouté : " + currentCard.nom;
+            status.innerText = "Enregistré : " + currentCard.nom;
         };
     </script>
 </body>
