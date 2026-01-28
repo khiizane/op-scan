@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>op-scan V3</title>
+    <title>op-scan V3.1</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE GLOBAL --- */
@@ -44,7 +44,7 @@
     <audio id="beepSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
 
     <div class="header">
-        <span>op-scan V3</span>
+        <span>op-scan V3.1</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -79,7 +79,7 @@
     <script>
         // =================================================================
         // 👇👇 TON URL EST DÉJÀ INTÉGRÉE ICI 👇👇
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
         // =================================================================
 
         const video = document.getElementById('video');
@@ -90,30 +90,23 @@
         const beepSound = document.getElementById('beepSound');
         let track = null;
 
-        // --- GESTION CAMERA (Version V3 Robuste) ---
+        // --- GESTION CAMERA ---
         async function startCamera() {
             try {
-                // On demande juste "environment" (caméra arrière)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "environment" } 
                 });
-                
                 video.srcObject = stream;
-                
-                // On attend que la vidéo soit prête
                 video.onloadedmetadata = () => {
                     track = stream.getVideoTracks()[0];
                     status.innerText = "Prêt à scanner";
                 };
-
             } catch (err) { 
                 console.error(err);
                 status.innerText = "❌ Caméra bloquée. Vérifiez HTTPS.";
-                // Alerte si on n'est pas en HTTPS ou si permission refusée
                 alert("Erreur Caméra : " + err.message + "\nL'application doit être en HTTPS.");
             }
         }
-        
         startCamera();
 
         // --- GESTION ZOOM ---
@@ -128,13 +121,12 @@
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (!track) { alert("Caméra non prête !"); return; }
-            
             try {
                 isFlashOn = !isFlashOn;
                 await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
                 flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
             } catch (e) {
-                isFlashOn = !isFlashOn; // Reset état
+                isFlashOn = !isFlashOn;
                 alert("Le flash n'est pas supporté sur cet appareil.");
             }
         };
@@ -143,86 +135,6 @@
         function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
 
-        // --- ENVOI DES DONNÉES VERS GOOGLE SHEET ---
+        // --- ENVOI DES DONNÉES ---
         async function sendData(cardId) {
-            status.innerText = "⏳ Envoi de " + cardId + "...";
-            try {
-                // Mode no-cors obligatoire pour éviter les erreurs CORS
-                await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: cardId })
-                });
-                // Succès supposé (car no-cors ne renvoie pas de réponse lisible)
-                status.innerText = "✅ " + cardId + " envoyé !";
-                setTimeout(() => { status.innerText = "Prêt à scanner"; }, 2500);
-            } catch (e) { 
-                status.innerText = "❌ Erreur connexion"; 
-            }
-        }
-
-        // --- FONCTION DE SCAN (V3) ---
-        document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "🔍 Analyse...";
-            const ctx = canvas.getContext('2d');
-            
-            // On prend la taille réelle de la vidéo
-            const w = video.videoWidth;
-            const h = video.videoHeight;
-            
-            canvas.width = w;
-            canvas.height = h;
-            
-            ctx.drawImage(video, 0, 0, w, h);
-
-            // OPTIMISATION IMAGE : Contraste extrême Noir & Blanc
-            let imgData = ctx.getImageData(0, 0, w, h);
-            let d = imgData.data;
-            for (let i = 0; i < d.length; i += 4) {
-                let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                let val = (gray > 100) ? 255 : 0; // Seuil de coupure
-                d[i] = d[i+1] = d[i+2] = val;
-            }
-            ctx.putImageData(imgData, 0, 0);
-            
-            try {
-                // Lecture OCR avec Tesseract
-                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-                    tessedit_char_whitelist: 'OPSTEB0123456789-'
-                });
-                
-                // Nettoyage intelligent des caractères
-                let clean = text.toUpperCase().replace(/\s/g, '')
-                                .replace(/[OQD]/g, "0")
-                                .replace(/I/g, "1")
-                                .replace(/Z/g, "2");
-
-                // Corrections spécifiques One Piece
-                if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
-                if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
-                if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
-
-                // Validation Regex (OPxx-xxx ou P-xxx)
-                let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
-
-                if (match) {
-                    beepSound.play();
-                    sendData(match[0]);
-                } else {
-                    status.innerText = "❌ Rien trouvé. Rapprochez-vous.";
-                    setTimeout(() => status.innerText = "Prêt à scanner", 1500);
-                }
-            } catch (e) { 
-                console.error(e);
-                status.innerText = "Erreur OCR interne"; 
-            }
-        };
-
-        function submitManual() {
-            const val = document.getElementById('manualInput').value.toUpperCase();
-            if (val) { hideManual(); sendData(val); }
-        }
-    </script>
-</body>
-</html>
+            status.innerText = "⏳
