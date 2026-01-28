@@ -3,150 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner - Pro Mode</title>
+    <title>OPCG Scanner V2</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        /* --- STYLE IDENTIQUE A L'ORIGINAL --- */
-        html, body { 
-            height: 100%; 
-            margin: 0; 
-            padding: 0; 
-            background: #121212; 
-            color: white; 
-            font-family: sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-        }
-
-        .header { 
-            background: #f39c12; 
-            color: black; 
-            padding: 10px 15px; 
-            font-weight: bold; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center;
-            z-index: 20;
-        }
-        
-        #video-container { 
-            position: relative; 
-            flex-grow: 1; 
-            background: black; 
-            overflow: hidden; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-        }
-
-        video { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-        }
-        
-        #focus-zone { 
-            position: absolute; 
-            width: 85%; 
-            height: 120px; 
-            border: 3px solid #f39c12; 
-            border-radius: 8px;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
-            pointer-events: none; 
-            z-index: 10;
-        }
-
-        .scanning-line {
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: rgba(243, 156, 18, 0.7);
-            top: 0;
-            animation: scanMove 2s infinite linear;
-        }
-
-        @keyframes scanMove {
-            0% { top: 0; }
-            100% { top: 100%; }
-        }
-
-        .ui { 
-            background: #1a1a1a; 
-            padding: 15px; 
-            border-top: 2px solid #f39c12; 
-            z-index: 20;
-        }
-
-        .controls { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            gap: 15px; 
-            margin-bottom: 10px; 
-        }
-
-        button { 
-            padding: 16px; 
-            width: 100%; 
-            max-width: 400px;
-            border-radius: 12px; 
-            border: none; 
-            font-weight: bold; 
-            font-size: 16px; 
-            cursor: pointer; 
-            margin: 5px 0; 
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
+        html, body { height: 100%; margin: 0; padding: 0; background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; }
+        .header { background: #f39c12; color: black; padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; z-index: 20; }
+        #video-container { position: relative; flex-grow: 1; background: black; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        #focus-zone { position: absolute; width: 85%; height: 120px; border: 3px solid #f39c12; border-radius: 8px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10; }
+        .scanning-line { position: absolute; width: 100%; height: 2px; background: rgba(243, 156, 18, 0.7); top: 0; animation: scanMove 2s infinite linear; }
+        @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
+        .ui { background: #1a1a1a; padding: 15px; border-top: 2px solid #f39c12; z-index: 20; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px; }
+        button { padding: 16px; width: 100%; max-width: 400px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; margin: 5px auto; display: block; }
         .btn-scan { background: #f39c12; color: black; }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
-        .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; }
-        
+        .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; margin:0; }
         #status { margin-bottom: 5px; color: #f1c40f; font-weight: bold; font-size: 14px; text-align: center;}
-        
         input[type=range] { width: 60%; accent-color: #f39c12; }
-
-        .modal { 
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; 
-            justify-content: center; align-items: center; 
-        }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
-        input[type=text] { 
-            width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; 
-            text-align: center; border-radius: 10px; border: 1px solid #f39c12; 
-            background: black; color: white; margin-bottom: 20px; 
-        }
+        input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
     </style>
 </head>
 <body>
-
     <audio id="beepSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
-
     <div class="header">
         <span>OPCG COLLECTOR</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
-
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
-        <div id="focus-zone">
-            <div class="scanning-line"></div>
-        </div>
+        <div id="focus-zone"><div class="scanning-line"></div></div>
     </div>
-
     <div class="ui">
         <div id="status">Prêt à scanner</div>
         <div class="controls">
             <span>ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
-        <button class="btn-scan" id="scanBtn">📸 SCANNER LE CODE</button>
+        <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
         <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
     </div>
-
     <div id="modalManual" class="modal">
         <div class="modal-box">
             <h3 style="color:#f39c12">Code de la carte</h3>
@@ -155,11 +53,13 @@
             <button style="background:#e74c3c; color:white; margin-top:10px;" onclick="hideManual()">ANNULER</button>
         </div>
     </div>
-
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdhkk831p1QmeLsTSQoXaXrKAvms-K0toW33UMp_6WGHkgRworeKghHgkpzJYsvdOr/exec";
+        // --- COLLE TON URL CI-DESSOUS ENTRE LES GUILLEMETS ---
+        const GOOGLE_SCRIPT_URL = "COLLE_TON_URL_ICI"; 
+        // -----------------------------------------------------
+
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const status = document.getElementById('status');
@@ -175,21 +75,16 @@
                 });
                 video.srcObject = stream;
                 track = stream.getVideoTracks()[0];
-            } catch (err) { 
-                status.innerText = "❌ Caméra bloquée ou non sécurisée (HTTPS requis)."; 
-            }
+            } catch (err) { status.innerText = "❌ Erreur Caméra (HTTPS requis ?)"; }
         }
         startCamera();
 
-        zoomRange.oninput = () => {
-            if (track) track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }).catch(() => {});
-        };
-
+        zoomRange.oninput = () => { if (track) track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }).catch(() => {}); };
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (track) {
                 isFlashOn = !isFlashOn;
-                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }).catch(() => alert("Flash indisponible sur cet appareil"));
+                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }).catch(() => alert("Flash indisponible"));
                 flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
             }
         };
@@ -200,88 +95,27 @@
         async function sendData(cardId) {
             status.innerText = "⏳ Envoi de " + cardId + "...";
             try {
+                // IMPORTANT : mode 'no-cors' pour éviter les erreurs de sécurité
                 await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: cardId })
                 });
-                status.innerText = "✅ " + cardId + " ajouté !";
-                // On remet à "Prêt" après 3 secondes
-                setTimeout(() => { status.innerText = "Prêt à scanner"; }, 3000);
-            } catch (e) { status.innerText = "❌ Erreur de connexion."; }
-        }
-
-        // --- NOUVELLE FONCTION DE SCAN AMÉLIORÉE ---
-        document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "🔍 Analyse de l'image...";
-            const ctx = canvas.getContext('2d');
-            
-            // Calcul précis de la zone (High Resolution)
-            const scaleX = video.videoWidth / video.clientWidth;
-            const scaleY = video.videoHeight / video.clientHeight;
-            
-            const w = (video.clientWidth * 0.85) * scaleX;
-            const h = 120 * scaleY; 
-            const x = (video.videoWidth - w) / 2;
-            const y = (video.videoHeight / 2) - (h / 2);
-
-            canvas.width = w; 
-            canvas.height = h;
-
-            // 1. Dessiner l'image brute
-            ctx.drawImage(video, x, y, w, h, 0, 0, w, h);
-            
-            // 2. FILTRE BINARISATION (Noir & Blanc fort) pour aider l'IA
-            let imgData = ctx.getImageData(0, 0, w, h);
-            let d = imgData.data;
-            for (let i = 0; i < d.length; i += 4) {
-                let r = d[i], g = d[i+1], b = d[i+2];
-                // Convertir en niveau de gris + seuil drastique (blanc ou noir)
-                let v = (0.2126*r + 0.7152*g + 0.0722*b >= 110) ? 255 : 0;
-                d[i] = d[i+1] = d[i+2] = v;
-            }
-            ctx.putImageData(imgData, 0, 0);
-            
-            try {
-                // 3. Reconnaissance avec filtre de caractères (Whitelist)
-                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-                    tessedit_char_whitelist: 'OPSTEB0123456789-' // On n'autorise que ça
-                });
-
-                // 4. Nettoyage des erreurs fréquentes (ex: O vs 0)
-                let clean = text.toUpperCase().replace(/\s/g, '')
-                                .replace(/O/g, "0")  // Tout O devient 0
-                                .replace(/Q/g, "0")
-                                .replace(/D/g, "0")
-                                .replace(/I/g, "1")
-                                .replace(/Z/g, "2");
-
-                // Correction pour remettre "OP" (car on a transformé le O en 0)
-                // Ex: "0P01-001" redevient "OP01-001"
-                if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
-                if (clean.startsWith("0B")) clean = "EB" + clean.substring(2); // Pour EB-01
-                if (clean.startsWith("5T")) clean = "ST" + clean.substring(2); // Pour ST-01
-
-                // 5. Validation par Regex (Format OPxx-xxx ou STxx-xxx ou P-xxx)
-                let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
-
-                if (match) {
-                    beepSound.play(); // JOUE LE SON
-                    sendData(match[0]);
-                } else {
-                    status.innerText = "❌ Code non reconnu (" + clean.substring(0,8) + "...)";
-                    setTimeout(() => status.innerText = "Réessayer", 1500);
-                }
+                // En mode no-cors, on ne peut pas savoir si ça a marché, on suppose que oui
+                status.innerText = "✅ " + cardId + " envoyé !";
+                setTimeout(() => { status.innerText = "Prêt à scanner"; }, 2500);
             } catch (e) { 
                 console.error(e);
-                status.innerText = "Erreur OCR."; 
+                status.innerText = "❌ Erreur de connexion (Vérifie l'URL)"; 
             }
-        };
-
-        function submitManual() {
-            const val = document.getElementById('manualInput').value.toUpperCase();
-            if (val) { hideManual(); sendData(val); }
         }
-    </script>
-</body>
-</html>
+
+        document.getElementById('scanBtn').onclick = async () => {
+            if(GOOGLE_SCRIPT_URL.includes("COLLE_TON_URL")) {
+                alert("Tu as oublié de mettre l'URL du script dans le code !");
+                return;
+            }
+            status.innerText = "🔍 Analyse...";
+            const ctx = canvas.getContext('2d');
+            const scaleX = video.videoWidth / video.clientWidth
