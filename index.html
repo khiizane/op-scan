@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner - Final Layout</title>
+    <title>OPCG Scanner - Pro Mode</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        /* Empêche le rebond sur mobile et fixe la hauteur */
+        /* --- STYLE IDENTIQUE A L'ORIGINAL --- */
         html, body { 
             height: 100%; 
             margin: 0; 
@@ -29,7 +29,6 @@
             z-index: 20;
         }
         
-        /* La vidéo prend l'espace restant sans pousser les boutons */
         #video-container { 
             position: relative; 
             flex-grow: 1; 
@@ -46,7 +45,6 @@
             object-fit: cover; 
         }
         
-        /* GRAND CADRE DE SCAN */
         #focus-zone { 
             position: absolute; 
             width: 85%; 
@@ -72,7 +70,6 @@
             100% { top: 100%; }
         }
 
-        /* ZONE BOUTONS : Toujours en bas */
         .ui { 
             background: #1a1a1a; 
             padding: 15px; 
@@ -107,11 +104,10 @@
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
         .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; }
         
-        #status { margin-bottom: 5px; color: #f1c40f; font-weight: bold; font-size: 14px; }
+        #status { margin-bottom: 5px; color: #f1c40f; font-weight: bold; font-size: 14px; text-align: center;}
         
         input[type=range] { width: 60%; accent-color: #f39c12; }
 
-        /* MODAL */
         .modal { 
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; 
@@ -127,6 +123,8 @@
 </head>
 <body>
 
+    <audio id="beepSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
+
     <div class="header">
         <span>OPCG COLLECTOR</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
@@ -140,7 +138,7 @@
     </div>
 
     <div class="ui">
-        <div id="status">Prêt</div>
+        <div id="status">Prêt à scanner</div>
         <div class="controls">
             <span>ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
@@ -167,6 +165,7 @@
         const status = document.getElementById('status');
         const flashBtn = document.getElementById('flashBtn');
         const zoomRange = document.getElementById('zoomRange');
+        const beepSound = document.getElementById('beepSound');
         let track = null;
 
         async function startCamera() {
@@ -176,7 +175,9 @@
                 });
                 video.srcObject = stream;
                 track = stream.getVideoTracks()[0];
-            } catch (err) { status.innerText = "Caméra non détectée."; }
+            } catch (err) { 
+                status.innerText = "❌ Caméra bloquée ou non sécurisée (HTTPS requis)."; 
+            }
         }
         startCamera();
 
@@ -188,7 +189,7 @@
         flashBtn.onclick = async () => {
             if (track) {
                 isFlashOn = !isFlashOn;
-                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }).catch(() => alert("Flash indisponible"));
+                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }).catch(() => alert("Flash indisponible sur cet appareil"));
                 flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
             }
         };
@@ -205,14 +206,17 @@
                     body: JSON.stringify({ id: cardId })
                 });
                 status.innerText = "✅ " + cardId + " ajouté !";
+                // On remet à "Prêt" après 3 secondes
+                setTimeout(() => { status.innerText = "Prêt à scanner"; }, 3000);
             } catch (e) { status.innerText = "❌ Erreur de connexion."; }
         }
 
+        // --- NOUVELLE FONCTION DE SCAN AMÉLIORÉE ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "Lecture...";
+            status.innerText = "🔍 Analyse de l'image...";
             const ctx = canvas.getContext('2d');
             
-            // On calcule la zone de capture par rapport au flux réel de la caméra
+            // Calcul précis de la zone (High Resolution)
             const scaleX = video.videoWidth / video.clientWidth;
             const scaleY = video.videoHeight / video.clientHeight;
             
@@ -223,15 +227,55 @@
 
             canvas.width = w; 
             canvas.height = h;
+
+            // 1. Dessiner l'image brute
             ctx.drawImage(video, x, y, w, h, 0, 0, w, h);
             
+            // 2. FILTRE BINARISATION (Noir & Blanc fort) pour aider l'IA
+            let imgData = ctx.getImageData(0, 0, w, h);
+            let d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+                let r = d[i], g = d[i+1], b = d[i+2];
+                // Convertir en niveau de gris + seuil drastique (blanc ou noir)
+                let v = (0.2126*r + 0.7152*g + 0.0722*b >= 110) ? 255 : 0;
+                d[i] = d[i+1] = d[i+2] = v;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            
             try {
-                const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
-                let clean = text.toUpperCase().replace(/\s/g, '').replace(/Q/g, "O").replace(/0P/g, "OP");
-                let match = clean.match(/[A-Z]{1,2}\d{2}-\d{3}/);
-                if (match) sendData(match[0]);
-                else status.innerText = "Code non trouvé. Essayez de zoomer.";
-            } catch (e) { status.innerText = "Erreur OCR."; }
+                // 3. Reconnaissance avec filtre de caractères (Whitelist)
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+                    tessedit_char_whitelist: 'OPSTEB0123456789-' // On n'autorise que ça
+                });
+
+                // 4. Nettoyage des erreurs fréquentes (ex: O vs 0)
+                let clean = text.toUpperCase().replace(/\s/g, '')
+                                .replace(/O/g, "0")  // Tout O devient 0
+                                .replace(/Q/g, "0")
+                                .replace(/D/g, "0")
+                                .replace(/I/g, "1")
+                                .replace(/Z/g, "2");
+
+                // Correction pour remettre "OP" (car on a transformé le O en 0)
+                // Ex: "0P01-001" redevient "OP01-001"
+                if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
+                if (clean.startsWith("0B")) clean = "EB" + clean.substring(2); // Pour EB-01
+                if (clean.startsWith("5T")) clean = "ST" + clean.substring(2); // Pour ST-01
+
+                // 5. Validation par Regex (Format OPxx-xxx ou STxx-xxx ou P-xxx)
+                let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
+
+                if (match) {
+                    beepSound.play(); // JOUE LE SON
+                    sendData(match[0]);
+                } else {
+                    status.innerText = "❌ Code non reconnu (" + clean.substring(0,8) + "...)";
+                    setTimeout(() => status.innerText = "Réessayer", 1500);
+                }
+            } catch (e) { 
+                console.error(e);
+                status.innerText = "Erreur OCR."; 
+            }
         };
 
         function submitManual() {
