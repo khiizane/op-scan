@@ -77,64 +77,195 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // =================================================================
-        // 👇👇 TON URL EST DÉJÀ INTÉGRÉE ICI 👇👇
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
-        // =================================================================
+    // =================================================================
+    // URL DE TON SCRIPT GOOGLE (Déjà intégrée)
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
+    // =================================================================
 
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const status = document.getElementById('status');
-        const flashBtn = document.getElementById('flashBtn');
-        const zoomRange = document.getElementById('zoomRange');
-        const beepSound = document.getElementById('beepSound');
-        let track = null;
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const status = document.getElementById('status');
+    const flashBtn = document.getElementById('flashBtn');
+    const zoomRange = document.getElementById('zoomRange');
+    const beepSound = document.getElementById('beepSound');
+    let track = null;
 
-        // --- GESTION CAMERA ---
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } 
-                });
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    track = stream.getVideoTracks()[0];
+    // --- 1. DÉMARRAGE CAMÉRA (VERSION ROBUSTE) ---
+    async function startCamera() {
+        status.innerText = "Démarrage caméra...";
+        
+        // Vérification de sécurité (HTTPS)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("⚠️ ERREUR : Impossible d'accéder à la caméra.\nVérifie que tu es bien en HTTPS (pas de http:// ou file://).");
+            status.innerText = "Erreur : Non sécurisé (HTTPS requis)";
+            return;
+        }
+
+        try {
+            // On demande la caméra arrière ("environment")
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
+            
+            video.srcObject = stream;
+            
+            // On attend que la vidéo charge pour activer les fonctions
+            video.onloadedmetadata = () => {
+                const tracks = stream.getVideoTracks();
+                if (tracks.length > 0) {
+                    track = tracks[0];
                     status.innerText = "Prêt à scanner";
-                };
-            } catch (err) { 
-                console.error(err);
-                status.innerText = "❌ Caméra bloquée. Vérifiez HTTPS.";
-                alert("Erreur Caméra : " + err.message + "\nL'application doit être en HTTPS.");
+                } else {
+                    status.innerText = "Erreur piste vidéo";
+                }
+            };
+
+        } catch (err) {
+            console.error(err);
+            status.innerText = "❌ Caméra bloquée/refusée";
+            alert("Erreur Caméra : " + err.message + "\n\n1. Vérifie les permissions.\n2. Vérifie que le site est en HTTPS.");
+        }
+    }
+    
+    // Lancement immédiat
+    startCamera();
+
+    // --- 2. GESTION DU ZOOM ---
+    zoomRange.oninput = () => {
+        if (track) {
+            try { 
+                track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); 
+            } catch(e) {
+                console.log("Zoom non supporté");
             }
         }
-        startCamera();
+    };
 
-        // --- GESTION ZOOM ---
-        zoomRange.oninput = () => {
-            if (track) {
-                try { track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); } 
-                catch(e) {}
+    // --- 3. GESTION DU FLASH ---
+    let isFlashOn = false;
+    flashBtn.onclick = async () => {
+        if (!track) { 
+            alert("La caméra n'est pas encore prête !"); 
+            return; 
+        }
+        
+        try {
+            isFlashOn = !isFlashOn;
+            await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
+            flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
+        } catch (e) {
+            // Si ça échoue, on annule le changement d'état
+            isFlashOn = !isFlashOn; 
+            alert("Le flash ne semble pas compatible avec ce navigateur/téléphone.");
+        }
+    };
+
+    // --- 4. MODAL MANUEL ---
+    function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
+    function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
+
+    // --- 5. ENVOI DES DONNÉES (Google Sheet) ---
+    async function sendData(cardId) {
+        status.innerText = "⏳ Envoi de " + cardId + "...";
+        try {
+            await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors', // Indispensable pour Google Script
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: cardId })
+            });
+            // En no-cors, on ne reçoit pas de réponse JSON, on suppose que c'est bon
+            status.innerText = "✅ " + cardId + " (QTE +1)";
+            setTimeout(() => { status.innerText = "Prêt à scanner"; }, 2000);
+        } catch (e) { 
+            console.error(e);
+            status.innerText = "❌ Erreur connexion Internet"; 
+        }
+    }
+
+    // --- 6. FONCTION DE SCAN INTELLIGENTE ---
+    document.getElementById('scanBtn').onclick = async () => {
+        if (!video.videoWidth) {
+            status.innerText = "Attente caméra...";
+            return;
+        }
+
+        status.innerText = "🔍 Analyse en cours...";
+        const ctx = canvas.getContext('2d');
+        
+        // Récupération dimensions réelles
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        
+        canvas.width = w;
+        canvas.height = h;
+        
+        // 1. Capture image
+        ctx.drawImage(video, 0, 0, w, h);
+
+        // 2. Traitement d'image (Noir & Blanc fort)
+        let imgData = ctx.getImageData(0, 0, w, h);
+        let d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+            // Formule luminosité
+            let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+            // Seuil de coupure (Tout ce qui est gris devient noir, le reste blanc)
+            let val = (gray > 100) ? 255 : 0;
+            d[i] = d[i+1] = d[i+2] = val;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        
+        // 3. Reconnaissance OCR
+        try {
+            const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+                tessedit_char_whitelist: 'OPSTEB0123456789-' // Liste blanche stricte
+            });
+            
+            // 4. Nettoyage et Logique de correction
+            let clean = text.toUpperCase().replace(/\s/g, '')
+                            .replace(/[QD]/g, "0") // Q et D deviennent 0
+                            .replace(/I/g, "1")
+                            .replace(/Z/g, "2");
+
+            // --- CORRECTIONS SPÉCIFIQUES ---
+            
+            // Règle spéciale : Si ça commence par P suivi de 2 chiffres (ex: P09-001) -> OP09-001
+            clean = clean.replace(/^P(\d{2}-)/, "OP$1");
+
+            // Correction classique 0P -> OP
+            if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
+            
+            // Correction O vs 0 dans les chiffres
+            // On garde le préfixe (2 lettres) et on force les 0 dans le reste
+            if (clean.length > 4) {
+                let prefix = clean.substring(0, 2);
+                let suffix = clean.substring(2).replace(/O/g, "0");
+                clean = prefix + suffix;
             }
-        };
 
-        // --- GESTION FLASH ---
-        let isFlashOn = false;
-        flashBtn.onclick = async () => {
-            if (!track) { alert("Caméra non prête !"); return; }
-            try {
-                isFlashOn = !isFlashOn;
-                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
-                flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
-            } catch (e) {
-                isFlashOn = !isFlashOn;
-                alert("Le flash n'est pas supporté sur cet appareil.");
+            // Corrections Starters et Extra Boosters
+            if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
+            if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
+
+            // 5. Validation finale (Regex)
+            // Accepte : OP01-001, ST01-001, EB01-001, P-001
+            let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
+
+            if (match) {
+                beepSound.play();
+                sendData(match[0]);
+            } else {
+                status.innerText = "❌ Code lu : " + clean.substring(0, 10);
+                setTimeout(() => status.innerText = "Prêt à scanner", 1500);
             }
-        };
+        } catch (e) { 
+            console.error(e);
+            status.innerText = "Erreur OCR interne"; 
+        }
+    };
 
-        // --- MODAL MANUEL ---
-        function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
-        function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
-
-        // --- ENVOI DES DONNÉES ---
-        async function sendData(cardId) {
-            status.innerText = "⏳
+    function submitManual() {
+        const val = document.getElementById('manualInput').value.toUpperCase();
+        if (val) { hideManual(); sendData(val); }
+    }
+</script>
