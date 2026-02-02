@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner V8 (Correction Force)</title>
+    <title>OPCG V9 (Pro Contrast)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE --- */
@@ -18,14 +18,19 @@
         .scanning-line { position: absolute; width: 100%; height: 2px; background: rgba(243, 156, 18, 0.7); top: 0; animation: scanMove 2s infinite linear; }
         @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
 
-        .ui { background: #1a1a1a; padding: 15px; border-top: 2px solid #f39c12; z-index: 20; }
-        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px; }
+        .ui { background: #1a1a1a; padding: 10px; border-top: 2px solid #f39c12; z-index: 20; }
+        
+        /* CONTROLS (2 Lignes maintenant) */
+        .controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px;}
+        .control-label { font-size: 12px; font-weight: bold; color: #f39c12; width: 80px;}
+        
         button { padding: 16px; width: 100%; max-width: 400px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; margin: 5px auto; display: block; }
         .btn-scan { background: #f39c12; color: black; }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
         .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; margin:0; }
         #status { margin-bottom: 5px; color: #f1c40f; font-weight: bold; font-size: 14px; text-align: center;}
-        input[type=range] { width: 60%; accent-color: #f39c12; }
+        
+        input[type=range] { flex-grow: 1; accent-color: #f39c12; height: 5px; }
 
         /* POPUP RÉSULTAT */
         #resultModal {
@@ -41,6 +46,9 @@
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         .debug-link { font-size: 10px; color: #555; margin-bottom: 5px; word-break: break-all; }
         
+        /* MODAL CANVAS (Pour voir ce que le robot voit - Optionnel, caché par défaut) */
+        #debugCanvasContainer { position:absolute; bottom: 130px; left:10px; z-index:50; border: 1px solid red; display:none;}
+
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
         input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
@@ -53,7 +61,6 @@
     <div id="resultModal">
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="debug-link" id="debugLink">...</div>
-        
         <div class="card-info">
             <h2 id="resCode" style="color:#f39c12; font-size:30px;">...</h2>
             <div style="font-size: 24px; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 10px; border-radius: 10px; display:inline-block; margin-top:10px;">
@@ -64,21 +71,29 @@
     </div>
 
     <div class="header">
-        <span>OPCG V8</span>
+        <span>OPCG V9 (Contrast)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
         <div id="focus-zone"><div class="scanning-line"></div></div>
+        <div id="debugCanvasContainer"><canvas id="debugCanvas" width="100" height="40"></canvas></div>
     </div>
 
     <div class="ui">
         <div id="status">Démarrage...</div>
-        <div class="controls">
-            <span>ZOOM</span>
+        
+        <div class="controls-row">
+            <span class="control-label">ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
+
+        <div class="controls-row">
+            <span class="control-label">CONTRASTE</span>
+            <input type="range" id="thresholdRange" min="50" max="200" step="10" value="110">
+        </div>
+
         <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
@@ -95,14 +110,18 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // 👇👇 TON URL GOOGLE SCRIPT EST ICI 👇👇
+        // =================================================================
+        // 👇👇 TON URL MISE À JOUR 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
+        // =================================================================
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
+        const debugCanvas = document.getElementById('debugCanvas');
         const status = document.getElementById('status');
         const flashBtn = document.getElementById('flashBtn');
         const zoomRange = document.getElementById('zoomRange');
+        const thresholdRange = document.getElementById('thresholdRange'); // Curseur Contraste
         const beepSound = document.getElementById('beepSound');
         const resultModal = document.getElementById('resultModal');
         const resImage = document.getElementById('resImage');
@@ -127,6 +146,11 @@
 
         zoomRange.oninput = () => { if (track) try { track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); } catch(e){} };
 
+        // Ajustement dynamique du statut quand on bouge le contraste
+        thresholdRange.oninput = () => {
+            status.innerText = "Sensibilité : " + thresholdRange.value;
+        };
+
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (!track) return;
@@ -138,14 +162,12 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt à scanner"; }
 
-        // --- SYSTÈME D'IMAGE DOUBLE SOURCE ---
+        // --- IMAGE ---
         function tryLoadImage(cardId) {
             const serverUS = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const serverASIA = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
-            
             resImage.src = serverUS;
-            document.getElementById('debugLink').innerText = "Lien : " + serverUS;
-            
+            document.getElementById('debugLink').innerText = "Source: " + serverUS;
             resImage.onerror = function() {
                 resImage.src = serverASIA;
                 resImage.onerror = function() {
@@ -157,7 +179,6 @@
         // --- ENVOI ---
         async function sendData(cardId) {
             status.innerText = "⏳ Enregistrement...";
-            
             document.getElementById('resCode').innerText = cardId;
             tryLoadImage(cardId); 
             resultModal.style.display = 'flex';
@@ -173,49 +194,53 @@
                     body: formData
                 });
                 status.innerText = "✅ Carte sauvegardée";
-            } catch (e) { 
-                status.innerText = "⚠️ Erreur réseau";
-            }
+            } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- SCANNER AVEC CORRECTION "O" MANQUANT ---
+        // --- SCANNER PRO (Avec filtre de couleur inversé) ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "🔍 Analyse...";
+            status.innerText = "🔍 Analyse (Mode Pro)...";
             const ctx = canvas.getContext('2d');
+            const dbgCtx = debugCanvas.getContext('2d');
+            
             const w = video.videoWidth; const h = video.videoHeight;
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
 
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
+            
+            // Récupère la valeur du curseur (Seuil)
+            let threshold = parseInt(thresholdRange.value);
+
             for (let i = 0; i < d.length; i += 4) {
+                // Conversion en Gris
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                let val = (gray > 100) ? 255 : 0;
+                
+                // --- INVERSION COULEURS ---
+                let val = (gray > threshold) ? 0 : 255; 
+                
                 d[i] = d[i+1] = d[i+2] = val;
             }
             ctx.putImageData(imgData, 0, 0);
             
+            // Affichage debug
+            dbgCtx.drawImage(canvas, 0, 0, 100, 40);
+
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
                 
-                // Nettoyage de base
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
                 
-                // --- 🚨 CORRECTION DU "O" MANQUANT ---
-                // Si le code ressemble à P09-071 (P suivi d'un chiffre), on force l'ajout du O devant
-                if (/^P\d/.test(clean)) {
-                    clean = "O" + clean;
-                }
+                // Correction O manquant (P09 -> OP09)
+                if (/^P\d/.test(clean)) clean = "O" + clean;
                 
-                // Si le code commence par 0P (confondu avec le O), on remplace
+                // Corrections classiques
                 if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
-                
-                // Autres corrections
                 if (clean.length > 4) { let p = clean.substring(0, 2); let s = clean.substring(2).replace(/O/g, "0"); clean = p + s; }
                 if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
                 if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
 
-                // Validation
                 let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
@@ -223,7 +248,7 @@
                     sendData(match[0]);
                 } else {
                     status.innerText = "❌ Lu : " + clean.substring(0,8);
-                    setTimeout(() => status.innerText = "Prêt", 1500);
+                    setTimeout(() => status.innerText = "Astuce: Ajustez le contraste", 1500);
                 }
             } catch (e) { status.innerText = "Erreur OCR"; }
         };
