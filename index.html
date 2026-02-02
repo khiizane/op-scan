@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Visual V5 (Final)</title>
+    <title>OPCG Visual V6 (Form Mode)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* GLOBAL */
@@ -56,16 +56,16 @@
         
         <div class="card-info">
             <h2 id="resCode">...</h2>
-            <div id="resName" style="font-size: 20px; margin-bottom: 10px; color: #ccc;">Carte ajoutée</div>
+            <div id="resName" style="font-size: 20px; margin-bottom: 10px; color: #ccc;">Carte scannée</div>
             <div style="font-size: 22px; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 10px; border-radius: 10px; display:inline-block;">
-                QUANTITÉ +1
+                ENVOYÉ ✅
             </div>
         </div>
         <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
     </div>
 
     <div class="header">
-        <span>OPCG VISUAL V5</span>
+        <span>OPCG VISUAL V6</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -96,7 +96,7 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // 👇👇 TON URL ICI 👇👇
+        // 👇👇 COLLE TON URL GOOGLE SCRIPT ICI 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
 
         const video = document.getElementById('video');
@@ -138,36 +138,34 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt à scanner"; }
 
-        // --- LA MAGIE : Envoi Silencieux + Affichage Local ---
+        // --- ENVOI DES DONNÉES (Méthode Formulaire Robuste) ---
         async function sendData(cardId) {
             status.innerText = "⏳ Enregistrement...";
             
-            // 1. CALCUL DE L'IMAGE EN LOCAL (Contournement du blocage Google)
-            // On reconstruit le lien officiel One Piece directement ici
+            // 1. Calcul Image Local
             const localImageUrl = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             
-            // 2. AFFICHAGE IMMÉDIAT DU POPUP
+            // 2. Affichage Popup
             document.getElementById('resCode').innerText = cardId;
             document.getElementById('resImage').src = localImageUrl;
             resultModal.style.display = 'flex';
             
-            // 3. ENVOI DES DONNÉES EN ARRIÈRE-PLAN
+            // 3. Préparation des données "Format Formulaire" (plus fiable que JSON)
+            const formData = new URLSearchParams();
+            formData.append('id', cardId);
+
             try {
-                // 'no-cors' dit au navigateur : "Envoie la donnée, mais t'inquiète pas de la réponse"
-                // C'est ce qui évite l'erreur "Bloqué par Google"
                 await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors', 
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: cardId })
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData // On envoie comme un formulaire
                 });
-                // Comme on est en no-cors, on ne peut pas savoir si ça a échoué, 
-                // mais si l'URL est bonne, ça marche à 100%.
                 status.innerText = "✅ Carte sauvegardée";
                 
             } catch (e) { 
                 console.error(e);
-                status.innerText = "⚠️ Erreur réseau probable";
+                status.innerText = "⚠️ Erreur réseau";
             }
         }
 
@@ -179,7 +177,6 @@
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
 
-            // Binarisation (Noir et Blanc)
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
             for (let i = 0; i < d.length; i += 4) {
@@ -192,7 +189,6 @@
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
                 
-                // Nettoyage et Correction
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
                 clean = clean.replace(/^P(\d{2}-)/, "OP$1"); 
                 
