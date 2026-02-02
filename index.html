@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V16 - Color Fix)</title>
+    <title>OPCG Scanner (V17 - STABLE)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
-        /* --- STYLE --- */
+        /* --- STYLE GLOBAL --- */
         html, body { 
             height: 100%; margin: 0; padding: 0; 
             background: #121212; color: white; 
@@ -31,12 +31,11 @@
         
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* CADRE VERT (VISUEL) */
+        /* CADRE VERT */
         #focus-zone { 
             position: absolute; 
             width: 80%; height: 18%; 
-            bottom: 25%; 
-            left: 10%;
+            bottom: 25%; left: 10%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
             box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
@@ -116,7 +115,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V16)</span>
+        <span>OPCG SCANNER (V17)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -132,7 +131,7 @@
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
-        <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
+        <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO-STABILISÉ)</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
 
@@ -146,7 +145,7 @@
     </div>
 
     <script>
-        // 👇👇 TON URL 👇👇
+        // 👇👇 TON URL ICI 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
 
         const video = document.getElementById('video');
@@ -167,7 +166,12 @@
                 video: { 
                     facingMode: "environment", 
                     width: { ideal: 1920 }, height: { ideal: 1080 },
-                    advanced: [{ focusMode: "continuous" }, { exposureMode: "continuous" }]
+                    // On demande au téléphone de stabiliser l'image si possible
+                    advanced: [
+                        { focusMode: "continuous" }, 
+                        { exposureMode: "continuous" },
+                        { imageStabilization: true } 
+                    ]
                 } 
             };
             try {
@@ -201,50 +205,84 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- NOUVEAU LOGIC DE TRAITEMENT D'IMAGE ---
-        document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "⚡ Analyse Couleurs...";
+        // --- FONCTION DE TRAITEMENT D'IMAGE (Contraste Extrême) ---
+        function processImage(ctx, w, h) {
+            let imgData = ctx.getImageData(0, 0, w, h);
+            let d = imgData.data;
             
+            // Facteur de contraste (Plus c'est haut, plus ça sépare le jaune du noir)
+            // On augmente le contraste de +100%
+            const contrast = 100; 
+            const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+            for (let i = 0; i < d.length; i += 4) {
+                // 1. Convertir en niveaux de gris
+                let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+
+                // 2. Appliquer le BOOST de contraste
+                // Cela force les gris clairs (jaune) vers le BLANC pur
+                // Et les gris foncés (texte) vers le NOIR pur
+                let cVal = factor * (gray - 128) + 128;
+                
+                // 3. Limiter entre 0 et 255
+                if (cVal > 255) cVal = 255;
+                if (cVal < 0) cVal = 0;
+
+                // 4. Binarisation finale (Noir ou Blanc, pas de gris)
+                let final = (cVal > 100) ? 255 : 0; // Seuil strict
+
+                d[i] = d[i+1] = d[i+2] = final; 
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        // --- MODE RAFALE (STABILISATEUR LOGICIEL) ---
+        // Cette fonction va essayer de scanner 3 fois de suite rapidement
+        // Si l'une des tentatives marche, elle s'arrête.
+        let isScanning = false;
+        
+        document.getElementById('scanBtn').onclick = async () => {
+            if (isScanning) return;
+            isScanning = true;
+            status.innerText = "⚡ Stabilisation & Analyse...";
+            
+            // On va faire 3 tentatives espacées de 150ms
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                if (!isScanning) break; // Si trouvé, on arrête
+                
+                console.log("Tentative " + attempt);
+                let success = await performScan();
+                
+                if (success) {
+                    isScanning = false;
+                    return; // Trouvé !
+                }
+                // Petite pause avant la prochaine tentative (laisse la main bouger un peu)
+                await new Promise(r => setTimeout(r, 150));
+            }
+            
+            // Si on arrive ici, les 3 ont échoué
+            status.innerText = "❌ Échec (Trop flou ?)";
+            isScanning = false;
+            setTimeout(() => status.innerText = "Prêt.", 1500);
+        };
+
+        async function performScan() {
             const w = video.videoWidth; const h = video.videoHeight;
+            // Zone élargie (comme avant)
             const cropW = w * 0.85; const cropH = h * 0.40;
             const cropX = (w - cropW) / 2; const cropY = h - (h * 0.60);
 
             cropCanvas.width = cropW; cropCanvas.height = cropH;
             const ctx = cropCanvas.getContext('2d');
+            
+            // Capture l'image actuelle
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-            let imgData = ctx.getImageData(0, 0, cropW, cropH);
-            let d = imgData.data;
+            // Applique le filtre "Spécial Jaune"
+            processImage(ctx, cropW, cropH);
 
-            // 1. CALCUL DE LA MOYENNE DE LUMINOSITÉ (Seuil Dynamique)
-            let totalBrightness = 0;
-            for (let i = 0; i < d.length; i += 4) {
-                totalBrightness += (d[i] + d[i+1] + d[i+2]) / 3;
-            }
-            let avgBrightness = totalBrightness / (d.length / 4);
-            
-            // Correction : Si l'image est très sombre (Bleu/Noir), on baisse le seuil
-            // Si l'image est très claire (Jaune), on monte le seuil
-            let threshold = avgBrightness; 
-
-            // 2. BINARISATION INTELLIGENTE
-            for (let i = 0; i < d.length; i += 4) {
-                let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                
-                // Si le pixel est plus clair que la moyenne de la carte -> Blanc
-                // Sinon -> Noir
-                // Cela permet de détacher le texte quel que soit la couleur du fond
-                let val = (gray > threshold) ? 255 : 0;
-                
-                // Note : Tesseract préfère le texte NOIR sur fond BLANC.
-                // Donc on inverse le résultat si nécessaire, mais souvent le simple contraste suffit.
-                // Ici, on force un contraste maximal.
-                
-                d[i] = d[i+1] = d[i+2] = val; 
-            }
-            ctx.putImageData(imgData, 0, 0);
-
-            // Debug visuel
+            // Affiche le debug
             document.getElementById('debugCanvasContainer').style.display = 'block';
             const dbgCtx = debugCanvas.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
@@ -265,12 +303,11 @@
                     beepSound.play();
                     sendData(code);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
-                } else {
-                    status.innerText = "❌ Échec (" + clean.substring(0,5) + ")";
-                    setTimeout(() => status.innerText = "Prêt.", 1000);
+                    return true; // SUCCÈS
                 }
-            } catch (e) { status.innerText = "Erreur lecture."; }
-        };
+            } catch (e) { console.log(e); }
+            return false; // ÉCHEC
+        }
 
         function submitManual() {
             const val = document.getElementById('manualInput').value.toUpperCase();
