@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG V10 (Auto-Contrast)</title>
+    <title>OPCG V11 (Force OP)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE --- */
@@ -42,7 +42,7 @@
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         .debug-link { font-size: 10px; color: #555; margin-bottom: 5px; word-break: break-all; }
         
-        /* DEBUG VISUEL (Optionnel : Pour voir comment l'IA voit la carte) */
+        /* DEBUG VISUEL */
         #debugCanvasContainer { position:absolute; bottom: 130px; left:10px; z-index:50; border: 2px solid lime; display:none; background:black;}
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -67,14 +67,13 @@
     </div>
 
     <div class="header">
-        <span>OPCG V10 (Auto)</span>
+        <span>OPCG V11 (Force OP)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
         <div id="focus-zone"><div class="scanning-line"></div></div>
-        
         <div id="debugCanvasContainer"><canvas id="debugCanvas" width="100" height="40"></canvas></div>
     </div>
 
@@ -100,7 +99,7 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // 👇👇 TON URL ICI 👇👇
+        // 👇👇 URL GOOGLE SCRIPT 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
 
         const video = document.getElementById('video');
@@ -179,11 +178,11 @@
             } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- SCANNER INTELLIGENT (AUTO-CONTRASTE) ---
+        // --- SCANNER AVEC CORRECTION FORCEE (P -> OP) ---
         document.getElementById('scanBtn').onclick = async () => {
             status.innerText = "🔍 Analyse Auto...";
             const ctx = canvas.getContext('2d');
-            const dbgCtx = debugCanvas.getContext('2d'); // Pour le debug
+            const dbgCtx = debugCanvas.getContext('2d');
             
             const w = video.videoWidth; const h = video.videoHeight;
             canvas.width = w; canvas.height = h;
@@ -192,41 +191,40 @@
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
             
-            // --- ÉTAPE 1 : CALCUL DE LA LUMINOSITÉ MOYENNE ---
+            // Calcul luminosité auto
             let totalBrightness = 0;
             for (let i = 0; i < d.length; i += 4) {
                 totalBrightness += (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]);
             }
             let avgBrightness = totalBrightness / (d.length / 4);
-            
-            // Le seuil s'adapte automatiquement à la luminosité de la scène
             let autoThreshold = avgBrightness; 
 
-            // --- ÉTAPE 2 : BINARISATION & INVERSION ADAPTATIVE ---
+            // Binarisation Inversée
             for (let i = 0; i < d.length; i += 4) {
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                
-                // Si le pixel est plus clair que la moyenne (Texte Blanc), on le met NOIR (0)
-                // Si le pixel est plus sombre que la moyenne (Fond), on le met BLANC (255)
-                // C'est ce que Tesseract préfère (Noir sur Blanc)
                 let val = (gray > autoThreshold) ? 0 : 255; 
-                
                 d[i] = d[i+1] = d[i+2] = val;
             }
             ctx.putImageData(imgData, 0, 0);
             
-            // Affichage dans le petit écran de debug (en bas à gauche)
             document.getElementById('debugCanvasContainer').style.display = 'block';
             dbgCtx.drawImage(canvas, 0, 0, 100, 40);
 
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
                 
+                // 1. Nettoyage de base
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
                 
-                // Correction O manquant
-                if (/^P\d/.test(clean)) clean = "O" + clean;
+                // 2. CORRECTION FORCEE "OP"
+                // Si ça commence par P suivi d'un chiffre (Ex: P03-055), on remplace P par OP
+                // (?=\d) veut dire "suivi d'un chiffre"
+                clean = clean.replace(/^P(?=\d)/, "OP"); 
+
+                // Si ça commence par P- (Promo), on ne touche pas. 
+                // La ligne du dessus ne s'active QUE si c'est un chiffre après le P.
                 
+                // Autres corrections
                 if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
                 if (clean.length > 4) { let p = clean.substring(0, 2); let s = clean.substring(2).replace(/O/g, "0"); clean = p + s; }
                 if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
@@ -236,8 +234,8 @@
 
                 if (match) {
                     beepSound.play();
-                    sendData(match[0]);
-                    document.getElementById('debugCanvasContainer').style.display = 'none'; // Cache le debug
+                    sendData(match[0]); // Ici, match[0] sera bien OP03-055
+                    document.getElementById('debugCanvasContainer').style.display = 'none';
                 } else {
                     status.innerText = "❌ Lu: " + clean.substring(0,8);
                     setTimeout(() => status.innerText = "Prêt (Auto-Mode)", 1500);
