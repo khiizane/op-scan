@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner V7 (Multi-Source)</title>
+    <title>OPCG Scanner V8 (Correction Force)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE --- */
@@ -12,6 +12,8 @@
         
         #video-container { position: relative; flex-grow: 1; background: black; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* CADRE SCAN */
         #focus-zone { position: absolute; width: 85%; height: 120px; border: 3px solid #f39c12; border-radius: 8px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10; }
         .scanning-line { position: absolute; width: 100%; height: 2px; background: rgba(243, 156, 18, 0.7); top: 0; animation: scanMove 2s infinite linear; }
         @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
@@ -62,7 +64,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG V7</span>
+        <span>OPCG V8</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -93,7 +95,7 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // 👇👇 TON URL ICI 👇👇
+        // 👇👇 TON URL GOOGLE SCRIPT EST ICI 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
 
         const video = document.getElementById('video');
@@ -141,20 +143,13 @@
             const serverUS = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const serverASIA = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             
-            // 1. On essaie le serveur US (Officiel)
             resImage.src = serverUS;
-            document.getElementById('debugLink').innerText = "Source 1: " + serverUS;
+            document.getElementById('debugLink').innerText = "Lien : " + serverUS;
             
-            // 2. Si ça rate (onerror), on tente le serveur ASIE
             resImage.onerror = function() {
-                console.log("Image US échouée, tentative ASIE...");
                 resImage.src = serverASIA;
-                document.getElementById('debugLink').innerText = "Source 2 (Fallback): " + serverASIA;
-                
-                // 3. Si Asie rate aussi, on met l'image d'erreur finale
                 resImage.onerror = function() {
                     resImage.src = "https://upload.wikimedia.org/wikipedia/commons/d/d1/Image_not_available.png";
-                    document.getElementById('debugLink').innerText = "Image introuvable pour : " + cardId;
                 }
             };
         }
@@ -163,12 +158,10 @@
         async function sendData(cardId) {
             status.innerText = "⏳ Enregistrement...";
             
-            // Affichage Popup immédiat
             document.getElementById('resCode').innerText = cardId;
-            tryLoadImage(cardId); // Lance la recherche d'image
+            tryLoadImage(cardId); 
             resultModal.style.display = 'flex';
             
-            // Préparation Formulaire
             const formData = new URLSearchParams();
             formData.append('id', cardId);
 
@@ -185,7 +178,7 @@
             }
         }
 
-        // --- SCANNER ---
+        // --- SCANNER AVEC CORRECTION "O" MANQUANT ---
         document.getElementById('scanBtn').onclick = async () => {
             status.innerText = "🔍 Analyse...";
             const ctx = canvas.getContext('2d');
@@ -205,21 +198,31 @@
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
                 
+                // Nettoyage de base
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
-                clean = clean.replace(/^P(\d{2}-)/, "OP$1"); 
                 
+                // --- 🚨 CORRECTION DU "O" MANQUANT ---
+                // Si le code ressemble à P09-071 (P suivi d'un chiffre), on force l'ajout du O devant
+                if (/^P\d/.test(clean)) {
+                    clean = "O" + clean;
+                }
+                
+                // Si le code commence par 0P (confondu avec le O), on remplace
                 if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
+                
+                // Autres corrections
                 if (clean.length > 4) { let p = clean.substring(0, 2); let s = clean.substring(2).replace(/O/g, "0"); clean = p + s; }
                 if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
                 if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
 
+                // Validation
                 let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
                     beepSound.play();
                     sendData(match[0]);
                 } else {
-                    status.innerText = "❌ Code: " + clean.substring(0,8);
+                    status.innerText = "❌ Lu : " + clean.substring(0,8);
                     setTimeout(() => status.innerText = "Prêt", 1500);
                 }
             } catch (e) { status.innerText = "Erreur OCR"; }
