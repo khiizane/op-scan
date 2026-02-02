@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V25 - Proxy Fix)</title>
+    <title>OPCG Scanner (V26 - Robust)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -91,7 +91,6 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Caché) */
         #debugCanvasContainer { display:none; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -106,8 +105,10 @@
     <div id="resultModal">
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="card-info">
-            <h3 id="resName" style="color:#ffffff; font-size:24px; margin:0 0 5px 0; text-transform:uppercase; font-weight:bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Recherche...</h3>
+            <h3 id="resName" style="color:#ffffff; font-size:24px; margin:0 0 5px 0; text-transform:uppercase; font-weight:bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">...</h3>
+            
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
+            
             <div id="resRarityBox" style="font-size:20px; color:#3498db; margin:10px 0; font-weight:bold;"></div>
             
             <div style="font-size: 16px; color: #2ecc71; margin-top:15px; background:rgba(46, 204, 113, 0.1); padding:8px 15px; border-radius:20px; display:inline-block;">
@@ -118,7 +119,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V25)</span>
+        <span>OPCG SCANNER (V26)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -191,46 +192,45 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
-        // --- FIX : API AVEC PROXY POUR ÉVITER L'ERREUR ---
+        // --- NOUVELLE FONCTION RECHERCHE ROBUSTE ---
         async function fetchCardDetails(code) {
             const nameEl = document.getElementById('resName');
             const rarityEl = document.getElementById('resRarityBox');
             
-            nameEl.innerText = "Recherche infos...";
+            nameEl.innerText = "Recherche nom...";
             rarityEl.innerText = "";
 
             try {
-                // 1. URL Cible
+                // On utilise un proxy différent : corsproxy.io (plus stable)
                 const targetUrl = "https://api.limitlesstcg.com/api/opcg/cards?q=" + code;
-                
-                // 2. On passe par un proxy public (allorigins) pour éviter le blocage CORS
-                // encodeURIComponent protège les caractères spéciaux
-                const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl);
+                const proxyUrl = "https://corsproxy.io/?" + encodeURIComponent(targetUrl);
 
-                const response = await fetch(proxyUrl);
-                
+                // Timeout de 3 secondes max (si ça met trop de temps, on abandonne la recherche du nom)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+                const response = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (response.ok) {
                     const json = await response.json();
-                    
                     if (json && json.length > 0) {
                         const card = json[0];
                         nameEl.innerText = card.name;
-                        
-                        if (card.rarity) {
-                            rarityEl.innerText = "Rareté : " + card.rarity;
-                        }
+                        if (card.rarity) rarityEl.innerText = "Rareté : " + card.rarity;
                         return card.rarity; 
                     } else {
-                        nameEl.innerText = "Nom introuvable";
+                        nameEl.innerText = "Nom inconnu";
                     }
                 } else {
-                    nameEl.innerText = "Non trouvé (API)";
+                    nameEl.innerText = "(Nom indisponible)";
                 }
             } catch (e) {
-                console.error(e);
-                nameEl.innerText = "Erreur Connexion";
+                console.log("Erreur API ou Timeout:", e);
+                // Si ça plante, on ne bloque pas l'utilisateur, on affiche juste ça :
+                nameEl.innerText = "(Pas de connexion)";
             }
-            return "";
+            return ""; // On retourne vide si échec, mais le scan continue
         }
 
         async function sendData(cardId) {
@@ -242,6 +242,7 @@
             resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
             resultModal.style.display = 'flex';
 
+            // On lance la recherche, mais on s'attend à ce qu'elle puisse échouer
             let foundRarity = await fetchCardDetails(cardId);
 
             const fd = new URLSearchParams(); 
@@ -252,7 +253,7 @@
                 await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
                 status.innerText = "✅ Sauvegardé !"; 
             } catch (e) { 
-                status.innerText = "⚠️ Erreur réseau"; 
+                status.innerText = "⚠️ Erreur réseau (Google)"; 
             }
         }
 
