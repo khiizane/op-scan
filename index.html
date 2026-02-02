@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V21 - Clean)</title>
+    <title>OPCG Scanner (V22 - Rareté)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -37,8 +37,9 @@
         
         #focus-zone { 
             position: absolute; 
-            width: 80%; height: 18%; 
-            bottom: 25%; left: 10%;
+            width: 85%; /* Légèrement élargi pour attraper la rareté à droite */
+            height: 18%; 
+            bottom: 25%; left: 7.5%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
             box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
@@ -91,11 +92,11 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Caché par défaut et le restera) */
+        /* DEBUG VISUEL (Caché) */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
             z-index:50; border: 2px solid lime; 
-            display:none; /* RESTE CACHÉ */
+            display:none; 
             background:black;
             transform-origin: bottom left;
             transform: scale(0.5);
@@ -114,6 +115,8 @@
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="card-info">
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
+            <h3 id="resRarity" style="color:#3498db; font-size:24px; margin:5px 0;"></h3>
+            
             <div style="font-size: 18px; color: #2ecc71; margin-top:10px;">
                 ✅ ENREGISTRÉ
             </div>
@@ -122,13 +125,13 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V21)</span>
+        <span>OPCG SCANNER (V22)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
-        <div id="focus-zone"><div class="zone-label">PLACER CODE ICI</div><div class="scanning-line"></div></div>
+        <div id="focus-zone"><div class="zone-label">CODE + RARETÉ</div><div class="scanning-line"></div></div>
         <div id="debugCanvasContainer"><canvas id="debugCanvas"></canvas></div>
     </div>
 
@@ -146,6 +149,7 @@
         <div class="modal-box">
             <h3 style="color:#f39c12">Code de la carte</h3>
             <input type="text" id="manualInput" placeholder="EX: OP01-001">
+            <div style="margin: 10px 0; color: #aaa; font-size: 12px;">La rareté sera détectée auto ou vide</div>
             <button class="btn-scan" onclick="submitManual()">VALIDER</button>
             <button style="background:#e74c3c; color:white; margin-top:10px;" onclick="hideManual()">ANNULER</button>
         </div>
@@ -196,18 +200,25 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
-        async function sendData(cardId) {
+        // --- ENVOI DES DONNÉES (CODE + RARETÉ) ---
+        async function sendData(cardId, rarity = "") {
             status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
+            document.getElementById('resRarity').innerText = rarity ? "[" + rarity + "]" : "";
+            
             const s1 = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const s2 = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
             resultModal.style.display = 'flex';
-            const fd = new URLSearchParams(); fd.append('id', cardId);
+            
+            const fd = new URLSearchParams(); 
+            fd.append('id', cardId);
+            fd.append('rarity', rarity); // Envoi de la rareté
+
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- TRAITEMENT IMAGE (CONTRASTE + NETTETÉ) ---
+        // --- TRAITEMENT IMAGE ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
@@ -218,28 +229,57 @@
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
                 let cVal = factor * (gray - 128) + 128;
                 if (cVal > 255) cVal = 255; if (cVal < 0) cVal = 0;
-                
                 let final = (cVal > 90) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = final; 
             }
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- DICTIONNAIRE DE CORRECTION ---
-        function smartCorrection(text) {
-            let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-            
+        // --- CORRECTION ET EXTRACTION DE RARETÉ ---
+        function analyzeText(rawText) {
+            // Nettoyage de base : Majuscules, alphanumérique + tiret
+            // IMPORTANT : On garde C, U, R, S, E, L pour les raretés
+            let clean = rawText.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+
+            // 1. Correction du CODE
             if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
             if (clean.match(/^[5$S][T7]/)) clean = clean.replace(/^[5$S][T7]/, "ST");
             if (clean.match(/^[EF][B8]/)) clean = clean.replace(/^[EF][B8]/, "EB");
             if (clean.startsWith("PR8")) clean = clean.replace("PR8", "PRB");
-            
             if (clean.startsWith("P") && !clean.startsWith("PR") && clean.length > 1 && !isNaN(clean[1]) && clean[1] !== "-") {
                 clean = "P-" + clean.substring(1);
             }
-
             clean = clean.replace(/I/g, "1").replace(/Z/g, "2");
-            return clean;
+
+            // 2. RECHERCHE DU MOTIF "CODE"
+            // Ex: OP05-001
+            let codeMatch = clean.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
+            
+            if (codeMatch) {
+                let foundCode = codeMatch[0];
+                
+                // 3. RECHERCHE DE LA RARETÉ (Ce qui reste après le code)
+                // On prend tout ce qui est après le code trouvé
+                let restOfString = clean.split(foundCode)[1];
+                let foundRarity = "";
+
+                if (restOfString && restOfString.length > 0) {
+                    // Analyse des motifs de rareté connus
+                    // L'ordre est important (SEC avant C, SR avant R)
+                    if (restOfString.includes("SEC") || restOfString.includes("5EC")) foundRarity = "SEC";
+                    else if (restOfString.includes("SR") || restOfString.includes("5R")) foundRarity = "SR";
+                    else if (restOfString.includes("SP") || restOfString.includes("5P")) foundRarity = "SP";
+                    else if (restOfString.includes("TR")) foundRarity = "TR";
+                    else if (restOfString.includes("UC") || restOfString.includes("VC") || restOfString.includes("0C")) foundRarity = "UC";
+                    else if (restOfString.includes("L")) foundRarity = "L";
+                    else if (restOfString.includes("R")) foundRarity = "R";
+                    else if (restOfString.includes("C")) foundRarity = "C";
+                }
+
+                return { code: foundCode, rarity: foundRarity };
+            }
+
+            return null;
         }
 
         // --- SCAN UPSCALÉ (HD) ---
@@ -248,12 +288,12 @@
         document.getElementById('scanBtn').onclick = async () => {
             if (isScanning) return;
             isScanning = true;
-            status.innerText = "⚡ Analyse HD...";
+            status.innerText = "⚡ Analyse Code + Rareté...";
             
             for (let attempt = 1; attempt <= 3; attempt++) {
                 if (!isScanning) break; 
-                let success = await performScan();
-                if (success) { isScanning = false; return; }
+                let result = await performScan();
+                if (result) { isScanning = false; return; }
                 await new Promise(r => setTimeout(r, 150));
             }
             status.innerText = "❌ Échec";
@@ -266,15 +306,14 @@
             const h = video.videoHeight;
             const zoom = parseFloat(zoomRange.value);
 
-            // 1. Découpage standard
-            let rawW = (w * 0.85) / zoom;
+            // J'élargis un peu la zone (0.85 -> 0.90) pour être sûr d'avoir la rareté
+            let rawW = (w * 0.90) / zoom;
             let rawH = (h * 0.40) / zoom;
             let pivotX = w * 0.50;
             let pivotY = h * 0.66;
             let rawX = pivotX - (rawW / 2);
             let rawY = pivotY - (rawH / 2);
 
-            // 2. UPSCALING (Agrandissement x2.5)
             const scaleFactor = 2.5; 
             const hdW = rawW * scaleFactor;
             const hdH = rawH * scaleFactor;
@@ -283,31 +322,22 @@
             const ctx = cropCanvas.getContext('2d');
             
             ctx.drawImage(video, rawX, rawY, rawW, rawH, 0, 0, hdW, hdH);
-
             processImage(ctx, hdW, hdH);
-
-            // J'AI RETIRÉ L'AFFICHAGE DU DEBUG ICI
-            /* const dbg = document.getElementById('debugCanvas');
-            dbg.width = hdW; dbg.height = hdH;
-            const dbgCtx = dbg.getContext('2d');
-            dbgCtx.drawImage(cropCanvas, 0, 0);
-            document.getElementById('debugCanvasContainer').style.display = 'block';
-            */
 
             try {
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
-                    tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
+                    // J'ai ajouté C et U à la liste autorisée
+                    tessedit_char_whitelist: 'OPSTEBRLCUP0123456789-', 
                     tessedit_pageseg_mode: '7' 
                 });
                 
-                let code = smartCorrection(text);
-                let match = code.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
+                // Analyse intelligente qui sépare Code et Rareté
+                let analysis = analyzeText(text);
 
-                if (match) {
+                if (analysis) {
                     beepSound.play();
-                    sendData(match[0]);
-                    // J'AI RETIRÉ LE MASQUAGE DU DEBUG CAR IL N'EST PLUS AFFICHÉ
-                    // document.getElementById('debugCanvasContainer').style.display = 'none';
+                    // Envoie Code ET Rareté
+                    sendData(analysis.code, analysis.rarity);
                     return true; 
                 }
             } catch (e) { console.log(e); }
@@ -316,7 +346,7 @@
 
         function submitManual() {
             const val = document.getElementById('manualInput').value.toUpperCase();
-            if (val) { hideManual(); sendData(val); }
+            if (val) { hideManual(); sendData(val, "MANUEL"); }
         }
     </script>
 </body>
