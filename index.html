@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG V12 (Correction Ultime)</title>
+    <title>OPCG V13 (4K Auto Scanner)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE --- */
@@ -42,7 +42,7 @@
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         .debug-link { font-size: 10px; color: #555; margin-bottom: 5px; word-break: break-all; }
         
-        /* DEBUG VISUEL */
+        /* DEBUG VISUEL (Caché par défaut) */
         #debugCanvasContainer { position:absolute; bottom: 130px; left:10px; z-index:50; border: 2px solid lime; display:none; background:black;}
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -67,7 +67,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG V12 (Force OP)</span>
+        <span>OPCG V13 (4K AUTO)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -113,30 +113,92 @@
         const resImage = document.getElementById('resImage');
         let track = null;
 
-        // --- CAMERA ---
+        // --- CAMERA HAUTE RÉSOLUTION & AUTOMATISATION ---
         async function startCamera() {
-            status.innerText = "Caméra...";
+            status.innerText = "Chargement Caméra...";
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 alert("Erreur: HTTPS requis."); return;
             }
+
+            // Configuration ULTIME : 4K + Focus Continu + Lumière Auto
+            const constraintsUltra = { 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 3840 },  // Tente le 4K
+                    height: { ideal: 2160 },
+                    // C'est ici qu'on force l'automatisation totale
+                    advanced: [
+                        { focusMode: "continuous" },
+                        { exposureMode: "continuous" },
+                        { whiteBalanceMode: "continuous" }
+                    ]
+                } 
+            };
+
+            // Configuration BACKUP (si l'ULTIME plante sur certains téléphones)
+            const constraintsStandard = {
+                video: {
+                    facingMode: "environment",
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            };
+
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    track = stream.getVideoTracks()[0];
-                    status.innerText = "Prêt à scanner";
-                };
-            } catch (err) { alert("Erreur Caméra: " + err.message); }
+                // Tentative 1 : Mode Ultime
+                const stream = await navigator.mediaDevices.getUserMedia(constraintsUltra);
+                applyStream(stream, "4K Auto");
+            } catch (err) { 
+                console.log("Mode Ultime échoué, passage en mode Standard HD...");
+                try {
+                    // Tentative 2 : Mode Standard HD
+                    const stream = await navigator.mediaDevices.getUserMedia(constraintsStandard);
+                    applyStream(stream, "HD Standard");
+                } catch(e) {
+                    alert("Erreur Caméra: " + e.message); 
+                }
+            }
         }
+
+        function applyStream(stream, modeName) {
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                track = stream.getVideoTracks()[0];
+                let set = track.getSettings();
+                console.log("Resolution active : " + set.width + "x" + set.height);
+                status.innerText = `Prêt (${modeName})`;
+            };
+        }
+
         startCamera();
 
-        zoomRange.oninput = () => { if (track) try { track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); } catch(e){} };
+        // GESTION DU ZOOM
+        zoomRange.oninput = () => { 
+            if (track) {
+                try { 
+                    const capabilities = track.getCapabilities();
+                    // Vérifie si le zoom est supporté avant d'appliquer
+                    if (capabilities.zoom) {
+                        track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); 
+                    }
+                } catch(e){ console.log("Zoom non supporté"); } 
+            }
+        };
 
+        // GESTION DU FLASH
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (!track) return;
-            try { isFlashOn = !isFlashOn; await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }); } 
-            catch (e) { isFlashOn = !isFlashOn; alert("Flash indisponible"); }
+            try { 
+                isFlashOn = !isFlashOn; 
+                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }); 
+                flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
+                flashBtn.style.color = isFlashOn ? "black" : "white";
+            } 
+            catch (e) { 
+                isFlashOn = !isFlashOn; 
+                alert("Flash indisponible sur cet appareil"); 
+            }
         };
 
         function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
@@ -178,31 +240,24 @@
             } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- LA NOUVELLE FONCTION DE CORRECTION IMPARABLE ---
+        // --- CORRECTION ULTIME ---
         function forceCorrection(rawCode) {
-            // rawCode est ce que le scanner a trouvé (ex: "P03-055" ou "0P03-055")
-            
-            // 1. Si ça commence par "P" et que le caractère d'après N'EST PAS un tiret "-"
-            //    Alors c'est une erreur de lecture (le O a disparu).
-            //    Ex: "P03..." -> Le 2eme caractère est '0', pas '-'. On remplace P par OP.
             if (rawCode.startsWith("P") && rawCode.charAt(1) !== "-") {
-                return "O" + rawCode; // Devient OP03...
+                return "O" + rawCode; // P03 -> OP03
             }
-
-            // 2. Correction classique 0P -> OP
             if (rawCode.startsWith("0P")) {
                 return "OP" + rawCode.substring(2);
             }
-
             return rawCode;
         }
 
         // --- SCANNER ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "🔍 Analyse Auto...";
+            status.innerText = "🔍 Analyse 4K...";
             const ctx = canvas.getContext('2d');
             const dbgCtx = debugCanvas.getContext('2d');
             
+            // On utilise la taille RÉELLE de la vidéo (qui est maintenant en HD/4K)
             const w = video.videoWidth; const h = video.videoHeight;
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
@@ -218,6 +273,7 @@
             let avgBrightness = totalBrightness / (d.length / 4);
             let autoThreshold = avgBrightness; 
 
+            // Binarisation (Noir et Blanc pour Tesseract)
             for (let i = 0; i < d.length; i += 4) {
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
                 let val = (gray > autoThreshold) ? 0 : 255; 
@@ -231,32 +287,25 @@
             try {
                 const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
                 
-                // Nettoyage de base
                 let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
                 
-                // Autres corrections
+                // Corrections mineures
                 if (clean.length > 4) { let p = clean.substring(0, 2); let s = clean.substring(2).replace(/O/g, "0"); clean = p + s; }
                 if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
                 if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
 
-                // Validation Regex large (On accepte Pxx-xxx pour l'instant)
                 let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
-                    // C'EST ICI QUE LA MAGIE OPÈRE
-                    // On a trouvé un code (ex: P03-055)
                     let foundCode = match[0];
-                    
-                    // On applique la correction ULTIME
-                    let correctedCode = forceCorrection(foundCode);
+                    let correctedCode = forceCorrection(foundCode); // Correction Ultime
                     
                     beepSound.play();
-                    sendData(correctedCode); // On envoie OP03-055
-                    
+                    sendData(correctedCode);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
                 } else {
                     status.innerText = "❌ Lu: " + clean.substring(0,8);
-                    setTimeout(() => status.innerText = "Prêt (Auto-Mode)", 1500);
+                    setTimeout(() => status.innerText = "Prêt", 1500);
                 }
             } catch (e) { status.innerText = "Erreur OCR"; }
         };
