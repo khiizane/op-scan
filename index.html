@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG V13 (4K Auto Scanner)</title>
+    <title>OPCG V13 (1080p Auto)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* --- STYLE --- */
@@ -67,7 +67,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG V13 (4K AUTO)</span>
+        <span>OPCG V13 (1080p)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -113,20 +113,21 @@
         const resImage = document.getElementById('resImage');
         let track = null;
 
-        // --- CAMERA HAUTE RÉSOLUTION & AUTOMATISATION ---
+        // --- CAMERA 1080p (Full HD) & AUTOMATISATION ---
         async function startCamera() {
             status.innerText = "Chargement Caméra...";
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 alert("Erreur: HTTPS requis."); return;
             }
 
-            // Configuration ULTIME : 4K + Focus Continu + Lumière Auto
-            const constraintsUltra = { 
+            // Configuration STABLE : 1080p + Focus Continu + Lumière Auto
+            // On demande 1920x1080, c'est suffisant pour lire le texte et beaucoup plus fluide.
+            const constraints1080p = { 
                 video: { 
                     facingMode: "environment",
-                    width: { ideal: 3840 },  // Tente le 4K
-                    height: { ideal: 2160 },
-                    // C'est ici qu'on force l'automatisation totale
+                    width: { ideal: 1920 },  
+                    height: { ideal: 1080 },
+                    // Automatisation
                     advanced: [
                         { focusMode: "continuous" },
                         { exposureMode: "continuous" },
@@ -135,25 +136,25 @@
                 } 
             };
 
-            // Configuration BACKUP (si l'ULTIME plante sur certains téléphones)
-            const constraintsStandard = {
+            // Backup simple si le mode avancé plante
+            const constraintsSimple = {
                 video: {
                     facingMode: "environment",
-                    width: { ideal: 1920 },
+                    width: { ideal: 1920 }, // On tente quand même le 1080p
                     height: { ideal: 1080 }
                 }
             };
 
             try {
-                // Tentative 1 : Mode Ultime
-                const stream = await navigator.mediaDevices.getUserMedia(constraintsUltra);
-                applyStream(stream, "4K Auto");
+                // Tentative 1 : Mode 1080p Auto
+                const stream = await navigator.mediaDevices.getUserMedia(constraints1080p);
+                applyStream(stream, "1080p Auto");
             } catch (err) { 
-                console.log("Mode Ultime échoué, passage en mode Standard HD...");
+                console.log("Mode 1080p Auto échoué, passage en mode simple...");
                 try {
-                    // Tentative 2 : Mode Standard HD
-                    const stream = await navigator.mediaDevices.getUserMedia(constraintsStandard);
-                    applyStream(stream, "HD Standard");
+                    // Tentative 2 : Mode Simple (sans forcer le focus auto)
+                    const stream = await navigator.mediaDevices.getUserMedia(constraintsSimple);
+                    applyStream(stream, "1080p Std");
                 } catch(e) {
                     alert("Erreur Caméra: " + e.message); 
                 }
@@ -177,7 +178,6 @@
             if (track) {
                 try { 
                     const capabilities = track.getCapabilities();
-                    // Vérifie si le zoom est supporté avant d'appliquer
                     if (capabilities.zoom) {
                         track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); 
                     }
@@ -253,11 +253,11 @@
 
         // --- SCANNER ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "🔍 Analyse 4K...";
+            status.innerText = "🔍 Analyse...";
             const ctx = canvas.getContext('2d');
             const dbgCtx = debugCanvas.getContext('2d');
             
-            // On utilise la taille RÉELLE de la vidéo (qui est maintenant en HD/4K)
+            // On utilise la taille 1080p
             const w = video.videoWidth; const h = video.videoHeight;
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
