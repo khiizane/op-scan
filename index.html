@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V18 - Zoom Fix)</title>
+    <title>OPCG Scanner (V19 - Alignement)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -23,23 +23,26 @@
             z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
 
-        /* CONTAINER CAMÉRA */
         #video-container { 
             position: relative; flex-grow: 1; 
-            background: black; overflow: hidden; /* Important pour masquer ce qui dépasse du zoom */
+            background: black; overflow: hidden; 
             display: flex; align-items: center; justify-content: center; 
         }
         
         video { 
             width: 100%; height: 100%; object-fit: cover; 
-            transition: transform 0.1s ease-out; /* Fluidifie le zoom */
-            transform-origin: center 65%; /* On zoom vers le bas (là où est le cadre vert) */
+            transition: transform 0.1s ease-out; 
+            /* C'EST ICI LE SECRET DU CALIBRAGE */
+            /* On fixe le point de zoom à 66% de la hauteur (le centre de la zone verte) */
+            transform-origin: 50% 66%; 
         }
         
         /* CADRE VERT */
         #focus-zone { 
             position: absolute; 
             width: 80%; height: 18%; 
+            /* La zone est à 25% du bas. Son centre est donc à 25% + 9% = 34% du bas */
+            /* 100% - 34% = 66% du haut. C'est notre point d'alignement. */
             bottom: 25%; left: 10%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
@@ -120,7 +123,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V18)</span>
+        <span>OPCG SCANNER (V19)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -134,7 +137,7 @@
         <div id="status">Initialisation...</div>
         <div class="controls">
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
-            <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1">
+            <input type="range" id="zoomRange" min="1" max="2.5" step="0.1" value="1">
         </div>
         <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO)</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
@@ -182,11 +185,9 @@
         }
         startCamera();
 
-        // --- NOUVEAU SYSTÈME DE ZOOM (VISUEL) ---
+        // Zoom visuel (CSS)
         zoomRange.oninput = () => { 
-            const val = zoomRange.value;
-            // On applique un scale CSS à la vidéo. C'est universel, ça marche partout.
-            video.style.transform = `scale(${val})`;
+            video.style.transform = `scale(${zoomRange.value})`;
         };
 
         let isFlashOn = false;
@@ -210,13 +211,12 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- TRAITEMENT D'IMAGE (Contraste Extrême) ---
+        // --- TRAITEMENT IMAGE (Contrast Boost) ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
             const contrast = 100; 
             const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-
             for (let i = 0; i < d.length; i += 4) {
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
                 let cVal = factor * (gray - 128) + 128;
@@ -227,7 +227,7 @@
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- SCAN INTELLIGENT AVEC ZOOM COMPENSÉ ---
+        // --- SCAN LOGIQUE (Aligné avec le zoom visuel) ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
@@ -247,40 +247,27 @@
         };
 
         async function performScan() {
-            const w = video.videoWidth; const h = video.videoHeight;
-            
-            // RÉCUPÉRATION DU NIVEAU DE ZOOM
-            const zoomLevel = parseFloat(zoomRange.value);
+            const w = video.videoWidth; 
+            const h = video.videoHeight;
+            const zoom = parseFloat(zoomRange.value);
 
-            // CALCUL DE LA ZONE À COUPER (CROP)
-            // Plus on zoom, plus la zone coupée est PETITE (car on regarde un détail)
-            
-            // Zone de base (sans zoom) = Largeur 85%, Hauteur 40%
-            let baseW = w * 0.85;
-            let baseH = h * 0.40;
+            // 1. Calculer la taille de la zone "vue" après le zoom
+            // Si on zoom x2, on voit une zone 2x plus petite
+            let cropW = (w * 0.85) / zoom;
+            let cropH = (h * 0.40) / zoom;
 
-            // Zone ajustée au zoom
-            let cropW = baseW / zoomLevel;
-            let cropH = baseH / zoomLevel;
+            // 2. Calculer le CENTRE DU ZOOM (Pivot)
+            // On a mis le transform-origin CSS à "50% 66%"
+            // Donc le centre mathématique est :
+            let pivotX = w * 0.50;
+            let pivotY = h * 0.66;
 
-            // Centre de la zone (On vise le bas de l'image, vers 60% de la hauteur)
-            // Mais attention, avec le zoom CSS 'transform-origin: center 65%', le centre visuel change peu.
-            // On centre le crop horizontalement
-            let cropX = (w - cropW) / 2;
-            
-            // Pour la hauteur, on cible la zone correspondant au cadre vert
-            // Si on zoom, on plonge "à l'intérieur" de l'image
-            let cropY = h - (h * 0.60); 
-            // Petit ajustement : si on zoom fort, on doit recentrer un peu le crop Y
-            if (zoomLevel > 1.5) {
-                // On remonte un peu le point de départ car le zoom grossit autour du point pivot
-                cropY = cropY + (cropH * 0.1); 
-            }
+            // 3. Centrer la découpe (crop) sur ce pivot
+            let cropX = pivotX - (cropW / 2);
+            let cropY = pivotY - (cropH / 2);
 
             cropCanvas.width = cropW; cropCanvas.height = cropH;
             const ctx = cropCanvas.getContext('2d');
-            
-            // Capture l'image
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
             processImage(ctx, cropW, cropH);
