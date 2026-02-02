@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V27 - Server Side)</title>
+    <title>OPCG Scanner (V28 - DB Mode)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -107,19 +107,19 @@
         <div class="card-info">
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
             
-            <div style="font-size: 16px; color: #ccc; margin-top:5px;">
-                Nom & Rareté détectés par le serveur
+            <div style="font-size: 16px; color: #ccc; margin-top:5px; font-style:italic;">
+                Nom & rareté détectés par le serveur
             </div>
             
             <div style="font-size: 16px; color: #2ecc71; margin-top:15px; background:rgba(46, 204, 113, 0.1); padding:8px 15px; border-radius:20px; display:inline-block;">
-                ✅ SAUVEGARDÉ DANS LE SHEET
+                ✅ ENVOYÉ AU SHEET
             </div>
         </div>
         <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V27)</span>
+        <span>OPCG SCANNER (V28)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -192,15 +192,19 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
+        // --- ENVOI ---
         async function sendData(cardId) {
             status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
             
+            // Image
             const s1 = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const s2 = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
+            
             resultModal.style.display = 'flex';
 
+            // On envoie juste l'ID. Le script Google se débrouille pour trouver Nom et Rareté dans la Base de Données.
             const fd = new URLSearchParams(); 
             fd.append('id', cardId);
             
@@ -212,6 +216,7 @@
             }
         }
 
+        // --- TRAITEMENT IMAGE ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
@@ -277,6 +282,7 @@
             processImage(ctx, hdW, hdH);
 
             try {
+                // On cherche UNIQUEMENT LE CODE (Plus fiable)
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
                     tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
                     tessedit_pageseg_mode: '7' 
