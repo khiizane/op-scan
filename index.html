@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V23 - Nom)</title>
+    <title>OPCG Scanner (V24 - API Fix)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -37,8 +37,7 @@
         
         #focus-zone { 
             position: absolute; 
-            width: 85%; 
-            height: 18%; 
+            width: 85%; height: 18%; 
             bottom: 25%; left: 7.5%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
@@ -92,13 +91,7 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Caché) */
-        #debugCanvasContainer { 
-            position:absolute; bottom: 180px; left:10px; 
-            z-index:50; border: 2px solid lime; 
-            display:none; background:black;
-            transform-origin: bottom left; transform: scale(0.5);
-        }
+        #debugCanvasContainer { display:none; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
@@ -112,20 +105,21 @@
     <div id="resultModal">
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="card-info">
-            <h3 id="resName" style="color:white; font-size:22px; margin:0 0 5px 0; text-transform:uppercase; min-height:25px;">...</h3>
+            <h3 id="resName" style="color:#ffffff; font-size:24px; margin:0 0 5px 0; text-transform:uppercase; font-weight:bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Recherche...</h3>
             
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
-            <h3 id="resRarity" style="color:#3498db; font-size:20px; margin:5px 0;"></h3>
             
-            <div style="font-size: 18px; color: #2ecc71; margin-top:10px;">
-                ✅ ENREGISTRÉ
+            <div id="resRarityBox" style="font-size:20px; color:#3498db; margin:10px 0; font-weight:bold;"></div>
+            
+            <div style="font-size: 16px; color: #2ecc71; margin-top:15px; background:rgba(46, 204, 113, 0.1); padding:8px 15px; border-radius:20px; display:inline-block;">
+                ✅ SAUVEGARDÉ
             </div>
         </div>
         <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V23)</span>
+        <span>OPCG SCANNER (V24)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -159,7 +153,6 @@
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
 
         const video = document.getElementById('video');
-        const debugCanvas = document.getElementById('debugCanvas');
         const status = document.getElementById('status');
         const flashBtn = document.getElementById('flashBtn');
         const zoomRange = document.getElementById('zoomRange');
@@ -199,47 +192,68 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
-        // --- NOUVEAU : FONCTION QUI CHERCHE LE NOM SUR INTERNET ---
-        async function fetchCardName(code) {
-            document.getElementById('resName').innerText = "Recherche nom...";
+        // --- API DE RECHERCHE (LIMITLESS TCG - SEARCH) ---
+        async function fetchCardDetails(code) {
+            const nameEl = document.getElementById('resName');
+            const rarityEl = document.getElementById('resRarityBox');
+            
+            nameEl.innerText = "Recherche infos...";
+            rarityEl.innerText = "";
+
             try {
-                // On utilise une API publique rapide pour trouver le nom
-                const response = await fetch("https://api.limitlesstcg.com/api/opcg/cards/" + code);
+                // On utilise ?q= pour chercher large, c'est plus fiable que l'ID exact
+                const response = await fetch("https://api.limitlesstcg.com/api/opcg/cards?q=" + code);
+                
                 if (response.ok) {
                     const json = await response.json();
-                    if (json && json.name) {
-                        document.getElementById('resName').innerText = json.name;
+                    
+                    // Si on a des résultats
+                    if (json && json.length > 0) {
+                        const card = json[0]; // On prend le premier résultat
+                        nameEl.innerText = card.name;
+                        
+                        if (card.rarity) {
+                            rarityEl.innerText = "Rareté : " + card.rarity;
+                        }
+                        return card.rarity; // On retourne la rareté pour l'envoyer au Sheet
                     } else {
-                        document.getElementById('resName').innerText = "";
+                        nameEl.innerText = "Nom introuvable";
                     }
                 } else {
-                    document.getElementById('resName').innerText = "";
+                    nameEl.innerText = "Erreur Infos (API)";
                 }
             } catch (e) {
-                // En cas d'erreur (pas de connexion), on laisse vide
-                document.getElementById('resName').innerText = "";
+                console.error(e);
+                nameEl.innerText = "Info indisponible (Hors ligne?)";
             }
+            return "";
         }
 
-        async function sendData(cardId, rarity = "") {
+        // --- ENVOI ---
+        async function sendData(cardId) {
             status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
-            document.getElementById('resRarity').innerText = rarity ? "[" + rarity + "]" : "";
             
-            // On lance la recherche du nom immédiatement
-            fetchCardName(cardId);
-
+            // 1. On lance l'affichage du modal TOUT DE SUITE
             const s1 = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const s2 = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
-            
             resultModal.style.display = 'flex';
-            
+
+            // 2. On cherche les infos sur Internet (Nom + Rareté)
+            let foundRarity = await fetchCardDetails(cardId);
+
+            // 3. On envoie tout au Google Sheet
             const fd = new URLSearchParams(); 
             fd.append('id', cardId);
-            fd.append('rarity', rarity); 
+            fd.append('rarity', foundRarity || ""); // On envoie la rareté trouvée sur le net
 
-            try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
+            try { 
+                await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
+                status.innerText = "✅ Sauvegardé !"; 
+            } catch (e) { 
+                status.innerText = "⚠️ Erreur réseau"; 
+            }
         }
 
         // --- TRAITEMENT IMAGE ---
@@ -259,9 +273,9 @@
             ctx.putImageData(imgData, 0, 0);
         }
 
-        function analyzeText(rawText) {
-            let clean = rawText.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-
+        // --- CORRECTION ---
+        function smartCorrection(text) {
+            let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
             if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
             if (clean.match(/^[5$S][T7]/)) clean = clean.replace(/^[5$S][T7]/, "ST");
             if (clean.match(/^[EF][B8]/)) clean = clean.replace(/^[EF][B8]/, "EB");
@@ -270,29 +284,10 @@
                 clean = "P-" + clean.substring(1);
             }
             clean = clean.replace(/I/g, "1").replace(/Z/g, "2");
-
-            let codeMatch = clean.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
-            
-            if (codeMatch) {
-                let foundCode = codeMatch[0];
-                let restOfString = clean.split(foundCode)[1];
-                let foundRarity = "";
-
-                if (restOfString && restOfString.length > 0) {
-                    if (restOfString.includes("SEC") || restOfString.includes("5EC")) foundRarity = "SEC";
-                    else if (restOfString.includes("SR") || restOfString.includes("5R")) foundRarity = "SR";
-                    else if (restOfString.includes("SP") || restOfString.includes("5P")) foundRarity = "SP";
-                    else if (restOfString.includes("TR")) foundRarity = "TR";
-                    else if (restOfString.includes("UC") || restOfString.includes("VC") || restOfString.includes("0C")) foundRarity = "UC";
-                    else if (restOfString.includes("L")) foundRarity = "L";
-                    else if (restOfString.includes("R")) foundRarity = "R";
-                    else if (restOfString.includes("C")) foundRarity = "C";
-                }
-                return { code: foundCode, rarity: foundRarity };
-            }
-            return null;
+            return clean;
         }
 
+        // --- SCANNER ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
@@ -312,20 +307,15 @@
         };
 
         async function performScan() {
-            const w = video.videoWidth; 
-            const h = video.videoHeight;
+            const w = video.videoWidth; const h = video.videoHeight;
             const zoom = parseFloat(zoomRange.value);
 
-            let rawW = (w * 0.90) / zoom;
-            let rawH = (h * 0.40) / zoom;
-            let pivotX = w * 0.50;
-            let pivotY = h * 0.66;
-            let rawX = pivotX - (rawW / 2);
-            let rawY = pivotY - (rawH / 2);
+            let rawW = (w * 0.90) / zoom; let rawH = (h * 0.40) / zoom;
+            let pivotX = w * 0.50; let pivotY = h * 0.66;
+            let rawX = pivotX - (rawW / 2); let rawY = pivotY - (rawH / 2);
 
             const scaleFactor = 2.5; 
-            const hdW = rawW * scaleFactor;
-            const hdH = rawH * scaleFactor;
+            const hdW = rawW * scaleFactor; const hdH = rawH * scaleFactor;
 
             cropCanvas.width = hdW; cropCanvas.height = hdH;
             const ctx = cropCanvas.getContext('2d');
@@ -334,16 +324,18 @@
             processImage(ctx, hdW, hdH);
 
             try {
+                // On cherche SEULEMENT LE CODE maintenant (plus fiable)
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
-                    tessedit_char_whitelist: 'OPSTEBRLCUP0123456789-', 
+                    tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
                     tessedit_pageseg_mode: '7' 
                 });
                 
-                let analysis = analyzeText(text);
+                let code = smartCorrection(text);
+                let match = code.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
 
-                if (analysis) {
+                if (match) {
                     beepSound.play();
-                    sendData(analysis.code, analysis.rarity);
+                    sendData(match[0]); // On envoie juste le code, le reste sera trouvé via l'API
                     return true; 
                 }
             } catch (e) { console.log(e); }
@@ -352,7 +344,7 @@
 
         function submitManual() {
             const val = document.getElementById('manualInput').value.toUpperCase();
-            if (val) { hideManual(); sendData(val, "MANUEL"); }
+            if (val) { hideManual(); sendData(val); }
         }
     </script>
 </body>
