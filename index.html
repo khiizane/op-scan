@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Visual V6 (Form Mode)</title>
+    <title>OPCG Scanner V7 (Multi-Source)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        /* GLOBAL */
+        /* --- STYLE --- */
         html, body { height: 100%; margin: 0; padding: 0; background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; }
         .header { background: #f39c12; color: black; padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; z-index: 20; }
         
-        /* CAMERA */
         #video-container { position: relative; flex-grow: 1; background: black; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
         #focus-zone { position: absolute; width: 85%; height: 120px; border: 3px solid #f39c12; border-radius: 8px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10; }
         .scanning-line { position: absolute; width: 100%; height: 2px; background: rgba(243, 156, 18, 0.7); top: 0; animation: scanMove 2s infinite linear; }
         @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
 
-        /* UI */
         .ui { background: #1a1a1a; padding: 15px; border-top: 2px solid #f39c12; z-index: 20; }
         .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px; }
         button { padding: 16px; width: 100%; max-width: 400px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; margin: 5px auto; display: block; }
@@ -34,14 +32,13 @@
             flex-direction: column; align-items: center; justify-content: center;
         }
         .card-preview {
-            width: auto; height: 55vh; max-width: 90%; border-radius: 10px; border: 2px solid #f39c12;
-            margin-bottom: 15px; box-shadow: 0 0 20px rgba(243, 156, 18, 0.5); object-fit: contain;
+            width: auto; height: 50vh; max-width: 90%; border-radius: 10px; border: 2px solid #f39c12;
+            margin-bottom: 10px; box-shadow: 0 0 20px rgba(243, 156, 18, 0.5); object-fit: contain;
             background: #222; 
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
-        .card-info h2 { color: #f39c12; margin: 0 0 5px 0; font-size: 28px;}
+        .debug-link { font-size: 10px; color: #555; margin-bottom: 5px; word-break: break-all; }
         
-        /* MODAL MANUEL */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
         input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
@@ -52,20 +49,20 @@
     <audio id="beepSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
 
     <div id="resultModal">
-        <img id="resImage" class="card-preview" src="" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/d/d1/Image_not_available.png'">
+        <img id="resImage" class="card-preview" src="" alt="Chargement...">
+        <div class="debug-link" id="debugLink">...</div>
         
         <div class="card-info">
-            <h2 id="resCode">...</h2>
-            <div id="resName" style="font-size: 20px; margin-bottom: 10px; color: #ccc;">Carte scannée</div>
-            <div style="font-size: 22px; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 10px; border-radius: 10px; display:inline-block;">
-                ENVOYÉ ✅
+            <h2 id="resCode" style="color:#f39c12; font-size:30px;">...</h2>
+            <div style="font-size: 24px; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 10px; border-radius: 10px; display:inline-block; margin-top:10px;">
+                ✅ ENREGISTRÉ
             </div>
         </div>
         <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
     </div>
 
     <div class="header">
-        <span>OPCG VISUAL V6</span>
+        <span>OPCG V7</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -96,7 +93,7 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // 👇👇 COLLE TON URL GOOGLE SCRIPT ICI 👇👇
+        // 👇👇 TON URL ICI 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
 
         const video = document.getElementById('video');
@@ -106,6 +103,7 @@
         const zoomRange = document.getElementById('zoomRange');
         const beepSound = document.getElementById('beepSound');
         const resultModal = document.getElementById('resultModal');
+        const resImage = document.getElementById('resImage');
         let track = null;
 
         // --- CAMERA ---
@@ -138,19 +136,39 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt à scanner"; }
 
-        // --- ENVOI DES DONNÉES (Méthode Formulaire Robuste) ---
+        // --- SYSTÈME D'IMAGE DOUBLE SOURCE ---
+        function tryLoadImage(cardId) {
+            const serverUS = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
+            const serverASIA = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
+            
+            // 1. On essaie le serveur US (Officiel)
+            resImage.src = serverUS;
+            document.getElementById('debugLink').innerText = "Source 1: " + serverUS;
+            
+            // 2. Si ça rate (onerror), on tente le serveur ASIE
+            resImage.onerror = function() {
+                console.log("Image US échouée, tentative ASIE...");
+                resImage.src = serverASIA;
+                document.getElementById('debugLink').innerText = "Source 2 (Fallback): " + serverASIA;
+                
+                // 3. Si Asie rate aussi, on met l'image d'erreur finale
+                resImage.onerror = function() {
+                    resImage.src = "https://upload.wikimedia.org/wikipedia/commons/d/d1/Image_not_available.png";
+                    document.getElementById('debugLink').innerText = "Image introuvable pour : " + cardId;
+                }
+            };
+        }
+
+        // --- ENVOI ---
         async function sendData(cardId) {
             status.innerText = "⏳ Enregistrement...";
             
-            // 1. Calcul Image Local
-            const localImageUrl = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
-            
-            // 2. Affichage Popup
+            // Affichage Popup immédiat
             document.getElementById('resCode').innerText = cardId;
-            document.getElementById('resImage').src = localImageUrl;
+            tryLoadImage(cardId); // Lance la recherche d'image
             resultModal.style.display = 'flex';
             
-            // 3. Préparation des données "Format Formulaire" (plus fiable que JSON)
+            // Préparation Formulaire
             const formData = new URLSearchParams();
             formData.append('id', cardId);
 
@@ -159,12 +177,10 @@
                     method: 'POST',
                     mode: 'no-cors', 
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formData // On envoie comme un formulaire
+                    body: formData
                 });
                 status.innerText = "✅ Carte sauvegardée";
-                
             } catch (e) { 
-                console.error(e);
                 status.innerText = "⚠️ Erreur réseau";
             }
         }
