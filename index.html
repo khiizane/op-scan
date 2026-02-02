@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V21 - HD OCR)</title>
+    <title>OPCG Scanner (V21 - Clean)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -91,13 +91,14 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL AGRANDI POUR VÉRIFIER L'UPSCALING */
+        /* DEBUG VISUEL (Caché par défaut et le restera) */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
             z-index:50; border: 2px solid lime; 
-            display:none; background:black;
+            display:none; /* RESTE CACHÉ */
+            background:black;
             transform-origin: bottom left;
-            transform: scale(0.5); /* On le réduit visuellement car l'image interne est énorme */
+            transform: scale(0.5);
         }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -218,7 +219,6 @@
                 let cVal = factor * (gray - 128) + 128;
                 if (cVal > 255) cVal = 255; if (cVal < 0) cVal = 0;
                 
-                // Seuil un peu plus bas pour bien fermer les boucles des 8
                 let final = (cVal > 90) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = final; 
             }
@@ -229,7 +229,6 @@
         function smartCorrection(text) {
             let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
             
-            // Correction Préfixe
             if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
             if (clean.match(/^[5$S][T7]/)) clean = clean.replace(/^[5$S][T7]/, "ST");
             if (clean.match(/^[EF][B8]/)) clean = clean.replace(/^[EF][B8]/, "EB");
@@ -276,7 +275,6 @@
             let rawY = pivotY - (rawH / 2);
 
             // 2. UPSCALING (Agrandissement x2.5)
-            // C'est ça qui va permettre de distinguer le 8 du 3
             const scaleFactor = 2.5; 
             const hdW = rawW * scaleFactor;
             const hdH = rawH * scaleFactor;
@@ -284,18 +282,17 @@
             cropCanvas.width = hdW; cropCanvas.height = hdH;
             const ctx = cropCanvas.getContext('2d');
             
-            // L'astuce : on dessine l'image plus grande qu'elle n'est !
-            // Le navigateur va lisser les pixels, rendant les chiffres plus lisibles.
             ctx.drawImage(video, rawX, rawY, rawW, rawH, 0, 0, hdW, hdH);
 
             processImage(ctx, hdW, hdH);
 
-            // Affiche le résultat agrandi pour debug
-            const dbg = document.getElementById('debugCanvas');
+            // J'AI RETIRÉ L'AFFICHAGE DU DEBUG ICI
+            /* const dbg = document.getElementById('debugCanvas');
             dbg.width = hdW; dbg.height = hdH;
             const dbgCtx = dbg.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0);
             document.getElementById('debugCanvasContainer').style.display = 'block';
+            */
 
             try {
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
@@ -309,7 +306,8 @@
                 if (match) {
                     beepSound.play();
                     sendData(match[0]);
-                    document.getElementById('debugCanvasContainer').style.display = 'none';
+                    // J'AI RETIRÉ LE MASQUAGE DU DEBUG CAR IL N'EST PLUS AFFICHÉ
+                    // document.getElementById('debugCanvasContainer').style.display = 'none';
                     return true; 
                 }
             } catch (e) { console.log(e); }
