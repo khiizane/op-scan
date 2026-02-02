@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V24 - API Fix)</title>
+    <title>OPCG Scanner (V25 - Proxy Fix)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -91,6 +91,7 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
+        /* DEBUG VISUEL (Caché) */
         #debugCanvasContainer { display:none; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -106,9 +107,7 @@
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="card-info">
             <h3 id="resName" style="color:#ffffff; font-size:24px; margin:0 0 5px 0; text-transform:uppercase; font-weight:bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Recherche...</h3>
-            
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
-            
             <div id="resRarityBox" style="font-size:20px; color:#3498db; margin:10px 0; font-weight:bold;"></div>
             
             <div style="font-size: 16px; color: #2ecc71; margin-top:15px; background:rgba(46, 204, 113, 0.1); padding:8px 15px; border-radius:20px; display:inline-block;">
@@ -119,7 +118,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V24)</span>
+        <span>OPCG SCANNER (V25)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -192,7 +191,7 @@
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
-        // --- API DE RECHERCHE (LIMITLESS TCG - SEARCH) ---
+        // --- FIX : API AVEC PROXY POUR ÉVITER L'ERREUR ---
         async function fetchCardDetails(code) {
             const nameEl = document.getElementById('resName');
             const rarityEl = document.getElementById('resRarityBox');
@@ -201,52 +200,53 @@
             rarityEl.innerText = "";
 
             try {
-                // On utilise ?q= pour chercher large, c'est plus fiable que l'ID exact
-                const response = await fetch("https://api.limitlesstcg.com/api/opcg/cards?q=" + code);
+                // 1. URL Cible
+                const targetUrl = "https://api.limitlesstcg.com/api/opcg/cards?q=" + code;
+                
+                // 2. On passe par un proxy public (allorigins) pour éviter le blocage CORS
+                // encodeURIComponent protège les caractères spéciaux
+                const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl);
+
+                const response = await fetch(proxyUrl);
                 
                 if (response.ok) {
                     const json = await response.json();
                     
-                    // Si on a des résultats
                     if (json && json.length > 0) {
-                        const card = json[0]; // On prend le premier résultat
+                        const card = json[0];
                         nameEl.innerText = card.name;
                         
                         if (card.rarity) {
                             rarityEl.innerText = "Rareté : " + card.rarity;
                         }
-                        return card.rarity; // On retourne la rareté pour l'envoyer au Sheet
+                        return card.rarity; 
                     } else {
                         nameEl.innerText = "Nom introuvable";
                     }
                 } else {
-                    nameEl.innerText = "Erreur Infos (API)";
+                    nameEl.innerText = "Non trouvé (API)";
                 }
             } catch (e) {
                 console.error(e);
-                nameEl.innerText = "Info indisponible (Hors ligne?)";
+                nameEl.innerText = "Erreur Connexion";
             }
             return "";
         }
 
-        // --- ENVOI ---
         async function sendData(cardId) {
             status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
             
-            // 1. On lance l'affichage du modal TOUT DE SUITE
             const s1 = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const s2 = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
             resultModal.style.display = 'flex';
 
-            // 2. On cherche les infos sur Internet (Nom + Rareté)
             let foundRarity = await fetchCardDetails(cardId);
 
-            // 3. On envoie tout au Google Sheet
             const fd = new URLSearchParams(); 
             fd.append('id', cardId);
-            fd.append('rarity', foundRarity || ""); // On envoie la rareté trouvée sur le net
+            fd.append('rarity', foundRarity || ""); 
 
             try { 
                 await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
@@ -256,7 +256,6 @@
             }
         }
 
-        // --- TRAITEMENT IMAGE ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
@@ -273,7 +272,6 @@
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- CORRECTION ---
         function smartCorrection(text) {
             let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
             if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
@@ -287,7 +285,6 @@
             return clean;
         }
 
-        // --- SCANNER ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
@@ -324,7 +321,6 @@
             processImage(ctx, hdW, hdH);
 
             try {
-                // On cherche SEULEMENT LE CODE maintenant (plus fiable)
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
                     tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
                     tessedit_pageseg_mode: '7' 
@@ -335,7 +331,7 @@
 
                 if (match) {
                     beepSound.play();
-                    sendData(match[0]); // On envoie juste le code, le reste sera trouvé via l'API
+                    sendData(match[0]); 
                     return true; 
                 }
             } catch (e) { console.log(e); }
