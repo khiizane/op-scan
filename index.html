@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (Calibré)</title>
+    <title>OPCG Scanner (V15 - Calibré)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -35,12 +35,11 @@
             width: 100%; height: 100%; object-fit: cover; 
         }
         
-        /* CADRE DE SCAN (ZONE VISUELLE) */
-        /* J'ai remonté un peu le cadre (bottom: 20%) pour être plus ergonomique */
+        /* CADRE DE SCAN (VISUEL) */
         #focus-zone { 
             position: absolute; 
-            width: 80%; height: 18%; /* Un peu plus grand */
-            bottom: 20%; 
+            width: 80%; height: 18%; 
+            bottom: 25%; /* J'ai remonté le cadre visuel aussi pour être plus naturel */
             left: 10%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
@@ -104,10 +103,10 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Pour vérifier le cadrage si besoin) */
+        /* DEBUG VISUEL (Affiche ce que l'IA voit vraiment) */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
-            z-index:50; border: 1px solid lime; 
+            z-index:50; border: 2px solid lime; 
             display:none; background:black;
         }
 
@@ -132,7 +131,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V14)</span>
+        <span>OPCG SCANNER (V15)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -245,22 +244,22 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Sauvegardé (erreur réseau)"; }
         }
 
-        // --- C'EST ICI QUE J'AI CORRIGÉ L'ALIGNEMENT ---
+        // --- CORRECTION DU DÉCALAGE ---
         document.getElementById('scanBtn').onclick = async () => {
             status.innerText = "⚡ Analyse...";
             
             const w = video.videoWidth;
             const h = video.videoHeight;
 
-            // ZONE LOGIQUE AGRANDIE (Pour régler ton problème)
-            // Au lieu de scanner juste une petite bande, on scanne une zone plus haute.
-            // On commence à 60% de la hauteur et on va jusqu'à 95% du bas.
-            // Ça fait une "grosse" zone de détection qui englobe largement le carré vert.
-            const cropW = w * 0.80; // 80% de la largeur (plus large qu'avant)
-            const cropH = h * 0.35; // 35% de la hauteur (beaucoup plus haut qu'avant)
+            // ZONE DE DÉTECTION (LOGIQUE)
+            // On agrandit la zone pour attraper large au-dessus et en-dessous du cadre vert
+            const cropW = w * 0.85; // 85% de la largeur
+            const cropH = h * 0.40; // 40% de la hauteur (Grosse zone)
             
+            // Calcul de la position Y : On remonte fortement la zone de détection
+            // h * 0.50 signifie qu'on commence à scanner depuis le MILIEU de l'écran vers le bas
             const cropX = (w - cropW) / 2; 
-            const cropY = h - (h * 0.40); // On commence plus haut pour être sûr d'attraper le code
+            const cropY = h - (h * 0.60); // On commence bien plus haut (à 40% du haut de l'écran)
 
             cropCanvas.width = cropW;
             cropCanvas.height = cropH;
@@ -276,7 +275,7 @@
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // Debug visible si tu veux vérifier ce que l'IA voit
+            // Affiche le debug : Tu verras que la zone capturée est maintenant très grande
             document.getElementById('debugCanvasContainer').style.display = 'block';
             const dbgCtx = debugCanvas.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
