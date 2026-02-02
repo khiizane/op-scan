@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V15 - Calibré)</title>
+    <title>OPCG Scanner (V16 - Color Fix)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
-        /* --- STYLE GLOBAL --- */
+        /* --- STYLE --- */
         html, body { 
             height: 100%; margin: 0; padding: 0; 
             background: #121212; color: white; 
@@ -16,7 +16,6 @@
             overflow: hidden; 
         }
 
-        /* HEADER */
         .header { 
             background: #f39c12; color: black; 
             padding: 12px 15px; font-weight: bold; 
@@ -24,22 +23,19 @@
             z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
 
-        /* ZONE CAMÉRA */
         #video-container { 
             position: relative; flex-grow: 1; 
             background: black; overflow: hidden; 
             display: flex; align-items: center; justify-content: center; 
         }
         
-        video { 
-            width: 100%; height: 100%; object-fit: cover; 
-        }
+        video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* CADRE DE SCAN (VISUEL) */
+        /* CADRE VERT (VISUEL) */
         #focus-zone { 
             position: absolute; 
             width: 80%; height: 18%; 
-            bottom: 25%; /* J'ai remonté le cadre visuel aussi pour être plus naturel */
+            bottom: 25%; 
             left: 10%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
@@ -63,16 +59,8 @@
         }
         @keyframes scanMove { 0% { top: 0; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
 
-        /* INTERFACE BASSE */
-        .ui { 
-            background: #1a1a1a; padding: 15px; 
-            border-top: 2px solid #f39c12; z-index: 20; 
-        }
-        
-        .controls { 
-            display: flex; justify-content: center; align-items: center; 
-            gap: 15px; margin-bottom: 15px; 
-        }
+        .ui { background: #1a1a1a; padding: 15px; border-top: 2px solid #f39c12; z-index: 20; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; }
         
         button { 
             padding: 15px; width: 100%; max-width: 400px; 
@@ -86,11 +74,9 @@
         .btn-scan { background: linear-gradient(135deg, #f39c12, #e67e22); color: black; box-shadow: 0 4px 15px rgba(243, 156, 18, 0.3); }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; margin-top: 10px; }
         .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; margin:0; }
-        
         #status { margin-bottom: 10px; color: #f1c40f; font-weight: bold; font-size: 14px; text-align: center; height: 20px;}
         input[type=range] { width: 60%; accent-color: #f39c12; }
 
-        /* POPUP RÉSULTAT */
         #resultModal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.95); z-index: 200;
@@ -103,7 +89,6 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Affiche ce que l'IA voit vraiment) */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
             z-index:50; border: 2px solid lime; 
@@ -124,28 +109,21 @@
         <div class="card-info">
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
             <div style="font-size: 18px; color: #2ecc71; margin-top:10px;">
-                ✅ CARTE ENREGISTRÉE
+                ✅ ENREGISTRÉ
             </div>
         </div>
         <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V15)</span>
+        <span>OPCG SCANNER (V16)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
-        
-        <div id="focus-zone">
-            <div class="zone-label">PLACER CODE ICI</div>
-            <div class="scanning-line"></div>
-        </div>
-        
-        <div id="debugCanvasContainer">
-            <canvas id="debugCanvas" width="150" height="50"></canvas>
-        </div>
+        <div id="focus-zone"><div class="zone-label">PLACER CODE ICI</div><div class="scanning-line"></div></div>
+        <div id="debugCanvasContainer"><canvas id="debugCanvas" width="150" height="50"></canvas></div>
     </div>
 
     <div class="ui">
@@ -155,7 +133,7 @@
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
         <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
-        <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
+        <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
 
     <div id="modalManual" class="modal">
@@ -167,14 +145,11 @@
         </div>
     </div>
 
-    <canvas id="canvas" style="display:none;"></canvas>
-
     <script>
-        // 👇👇 TON URL ICI 👇👇
+        // 👇👇 TON URL 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
 
         const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
         const debugCanvas = document.getElementById('debugCanvas');
         const status = document.getElementById('status');
         const flashBtn = document.getElementById('flashBtn');
@@ -191,32 +166,15 @@
                 audio: false,
                 video: { 
                     facingMode: "environment", 
-                    width: { ideal: 1920 },  
-                    height: { ideal: 1080 },
-                    advanced: [
-                        { focusMode: "continuous" }, 
-                        { exposureMode: "continuous" },
-                        { whiteBalanceMode: "continuous" }
-                    ]
+                    width: { ideal: 1920 }, height: { ideal: 1080 },
+                    advanced: [{ focusMode: "continuous" }, { exposureMode: "continuous" }]
                 } 
             };
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    track = stream.getVideoTracks()[0];
-                    status.innerText = "Prêt. Placez le code dans le cadre.";
-                };
-            } catch (err) { 
-                console.error("Erreur:", err);
-                status.innerText = "Mode Standard activé";
-                try {
-                    const streamSimple = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    video.srcObject = streamSimple;
-                    track = streamSimple.getVideoTracks()[0];
-                } catch(e) { alert("Caméra inaccessible."); }
-            }
+                video.onloadedmetadata = () => { track = stream.getVideoTracks()[0]; status.innerText = "Prêt."; };
+            } catch (e) { alert("Erreur caméra."); }
         }
         startCamera();
 
@@ -235,47 +193,58 @@
         async function sendData(cardId) {
             status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
-            const serverUS = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
-            const serverASIA = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
-            resImage.src = serverUS;
-            resImage.onerror = function() { resImage.src = serverASIA; };
+            const s1 = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
+            const s2 = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
+            resImage.src = s1; resImage.onerror = function() { resImage.src = s2; };
             resultModal.style.display = 'flex';
-            const formData = new URLSearchParams(); formData.append('id', cardId);
-            try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Sauvegardé (erreur réseau)"; }
+            const fd = new URLSearchParams(); fd.append('id', cardId);
+            try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- CORRECTION DU DÉCALAGE ---
+        // --- NOUVEAU LOGIC DE TRAITEMENT D'IMAGE ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "⚡ Analyse...";
+            status.innerText = "⚡ Analyse Couleurs...";
             
-            const w = video.videoWidth;
-            const h = video.videoHeight;
+            const w = video.videoWidth; const h = video.videoHeight;
+            const cropW = w * 0.85; const cropH = h * 0.40;
+            const cropX = (w - cropW) / 2; const cropY = h - (h * 0.60);
 
-            // ZONE DE DÉTECTION (LOGIQUE)
-            // On agrandit la zone pour attraper large au-dessus et en-dessous du cadre vert
-            const cropW = w * 0.85; // 85% de la largeur
-            const cropH = h * 0.40; // 40% de la hauteur (Grosse zone)
-            
-            // Calcul de la position Y : On remonte fortement la zone de détection
-            // h * 0.50 signifie qu'on commence à scanner depuis le MILIEU de l'écran vers le bas
-            const cropX = (w - cropW) / 2; 
-            const cropY = h - (h * 0.60); // On commence bien plus haut (à 40% du haut de l'écran)
-
-            cropCanvas.width = cropW;
-            cropCanvas.height = cropH;
+            cropCanvas.width = cropW; cropCanvas.height = cropH;
             const ctx = cropCanvas.getContext('2d');
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
             let imgData = ctx.getImageData(0, 0, cropW, cropH);
             let d = imgData.data;
+
+            // 1. CALCUL DE LA MOYENNE DE LUMINOSITÉ (Seuil Dynamique)
+            let totalBrightness = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                totalBrightness += (d[i] + d[i+1] + d[i+2]) / 3;
+            }
+            let avgBrightness = totalBrightness / (d.length / 4);
+            
+            // Correction : Si l'image est très sombre (Bleu/Noir), on baisse le seuil
+            // Si l'image est très claire (Jaune), on monte le seuil
+            let threshold = avgBrightness; 
+
+            // 2. BINARISATION INTELLIGENTE
             for (let i = 0; i < d.length; i += 4) {
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                let val = (gray > 100) ? 0 : 255; 
+                
+                // Si le pixel est plus clair que la moyenne de la carte -> Blanc
+                // Sinon -> Noir
+                // Cela permet de détacher le texte quel que soit la couleur du fond
+                let val = (gray > threshold) ? 255 : 0;
+                
+                // Note : Tesseract préfère le texte NOIR sur fond BLANC.
+                // Donc on inverse le résultat si nécessaire, mais souvent le simple contraste suffit.
+                // Ici, on force un contraste maximal.
+                
                 d[i] = d[i+1] = d[i+2] = val; 
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // Affiche le debug : Tu verras que la zone capturée est maintenant très grande
+            // Debug visuel
             document.getElementById('debugCanvasContainer').style.display = 'block';
             const dbgCtx = debugCanvas.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
@@ -297,7 +266,7 @@
                     sendData(code);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
                 } else {
-                    status.innerText = "❌ Non reconnu";
+                    status.innerText = "❌ Échec (" + clean.substring(0,5) + ")";
                     setTimeout(() => status.innerText = "Prêt.", 1000);
                 }
             } catch (e) { status.innerText = "Erreur lecture."; }
