@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V19 - Alignement)</title>
+    <title>OPCG Scanner (V20 - Dictionnaire)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -32,17 +32,13 @@
         video { 
             width: 100%; height: 100%; object-fit: cover; 
             transition: transform 0.1s ease-out; 
-            /* C'EST ICI LE SECRET DU CALIBRAGE */
-            /* On fixe le point de zoom à 66% de la hauteur (le centre de la zone verte) */
-            transform-origin: 50% 66%; 
+            transform-origin: 50% 66%; /* Pivot aligné sur le cadre vert */
         }
         
         /* CADRE VERT */
         #focus-zone { 
             position: absolute; 
             width: 80%; height: 18%; 
-            /* La zone est à 25% du bas. Son centre est donc à 25% + 9% = 34% du bas */
-            /* 100% - 34% = 66% du haut. C'est notre point d'alignement. */
             bottom: 25%; left: 10%;
             border: 3px solid #00ff00; 
             border-radius: 8px; 
@@ -123,7 +119,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V19)</span>
+        <span>OPCG SCANNER (V20)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -185,10 +181,8 @@
         }
         startCamera();
 
-        // Zoom visuel (CSS)
-        zoomRange.oninput = () => { 
-            video.style.transform = `scale(${zoomRange.value})`;
-        };
+        // Zoom visuel
+        zoomRange.oninput = () => { video.style.transform = `scale(${zoomRange.value})`; };
 
         let isFlashOn = false;
         flashBtn.onclick = async () => {
@@ -211,7 +205,7 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- TRAITEMENT IMAGE (Contrast Boost) ---
+        // --- TRAITEMENT IMAGE ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
@@ -227,7 +221,39 @@
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- SCAN LOGIQUE (Aligné avec le zoom visuel) ---
+        // --- CORRECTION INTELLIGENTE (Dictionnaire) ---
+        function smartCorrection(text) {
+            // Nettoyage de base : majuscules + alphanumérique + tiret
+            let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+
+            // 1. CORRECTION DES PRÉFIXES (DICTIONNAIRE)
+            
+            // OP (0P, QP, DP, O0 -> OP)
+            if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
+            
+            // ST (5T, S7, $T -> ST)
+            if (clean.match(/^[5$S][T7]/)) clean = clean.replace(/^[5$S][T7]/, "ST");
+            
+            // EB (E8, FB -> EB)
+            if (clean.match(/^[EF][B8]/)) clean = clean.replace(/^[EF][B8]/, "EB");
+
+            // PRB (PR8 -> PRB)
+            if (clean.startsWith("PR8")) clean = clean.replace("PR8", "PRB");
+            
+            // 2. CORRECTION SPÉCIALE : PROMOS "P"
+            // Si ça commence par P et un chiffre direct (ex: P001), on ajoute le tiret (P-001)
+            // On exclut PRB qui commence aussi par P
+            if (clean.startsWith("P") && !clean.startsWith("PR") && clean.length > 1 && !isNaN(clean[1]) && clean[1] !== "-") {
+                clean = "P-" + clean.substring(1);
+            }
+
+            // 3. CORRECTION CLASSIQUE
+            clean = clean.replace(/I/g, "1").replace(/Z/g, "2");
+
+            return clean;
+        }
+
+        // --- SCAN LOGIQUE ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
@@ -241,7 +267,7 @@
                 if (success) { isScanning = false; return; }
                 await new Promise(r => setTimeout(r, 150));
             }
-            status.innerText = "❌ Échec";
+            status.innerText = "❌ Non reconnu";
             isScanning = false;
             setTimeout(() => status.innerText = "Prêt.", 1500);
         };
@@ -251,18 +277,10 @@
             const h = video.videoHeight;
             const zoom = parseFloat(zoomRange.value);
 
-            // 1. Calculer la taille de la zone "vue" après le zoom
-            // Si on zoom x2, on voit une zone 2x plus petite
             let cropW = (w * 0.85) / zoom;
             let cropH = (h * 0.40) / zoom;
-
-            // 2. Calculer le CENTRE DU ZOOM (Pivot)
-            // On a mis le transform-origin CSS à "50% 66%"
-            // Donc le centre mathématique est :
             let pivotX = w * 0.50;
             let pivotY = h * 0.66;
-
-            // 3. Centrer la découpe (crop) sur ce pivot
             let cropX = pivotX - (cropW / 2);
             let cropY = pivotY - (cropH / 2);
 
@@ -278,19 +296,20 @@
 
             try {
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
-                    tessedit_char_whitelist: 'OPSTEB0123456789-', 
+                    // J'ai ajouté R, L, P, R, B pour les sets PRB, ST, OP
+                    tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
                     tessedit_pageseg_mode: '7' 
                 });
                 
-                let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
-                let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
+                // Appel de la correction intelligente
+                let code = smartCorrection(text);
+                
+                // Regex améliorée qui accepte OP, ST, EB, PRB et P
+                let match = code.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
-                    let code = match[0];
-                    if (code.startsWith("P") && code[1] !== "-") code = "O" + code;
-                    if (code.startsWith("0P")) code = "OP" + code.substring(2);
                     beepSound.play();
-                    sendData(code);
+                    sendData(match[0]);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
                     return true; 
                 }
