@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V20 - Dictionnaire)</title>
+    <title>OPCG Scanner (V21 - HD OCR)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -32,10 +32,9 @@
         video { 
             width: 100%; height: 100%; object-fit: cover; 
             transition: transform 0.1s ease-out; 
-            transform-origin: 50% 66%; /* Pivot aligné sur le cadre vert */
+            transform-origin: 50% 66%; 
         }
         
-        /* CADRE VERT */
         #focus-zone { 
             position: absolute; 
             width: 80%; height: 18%; 
@@ -92,10 +91,13 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
+        /* DEBUG VISUEL AGRANDI POUR VÉRIFIER L'UPSCALING */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
             z-index:50; border: 2px solid lime; 
             display:none; background:black;
+            transform-origin: bottom left;
+            transform: scale(0.5); /* On le réduit visuellement car l'image interne est énorme */
         }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
@@ -119,14 +121,14 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V20)</span>
+        <span>OPCG SCANNER (V21)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
         <div id="focus-zone"><div class="zone-label">PLACER CODE ICI</div><div class="scanning-line"></div></div>
-        <div id="debugCanvasContainer"><canvas id="debugCanvas" width="150" height="50"></canvas></div>
+        <div id="debugCanvasContainer"><canvas id="debugCanvas"></canvas></div>
     </div>
 
     <div class="ui">
@@ -135,7 +137,7 @@
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="2.5" step="0.1" value="1">
         </div>
-        <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO)</button>
+        <button class="btn-scan" id="scanBtn">📸 SCANNER (HD)</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
 
@@ -181,7 +183,6 @@
         }
         startCamera();
 
-        // Zoom visuel
         zoomRange.oninput = () => { video.style.transform = `scale(${zoomRange.value})`; };
 
         let isFlashOn = false;
@@ -205,61 +206,50 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- TRAITEMENT IMAGE ---
+        // --- TRAITEMENT IMAGE (CONTRASTE + NETTETÉ) ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
             const contrast = 100; 
             const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+            
             for (let i = 0; i < d.length; i += 4) {
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
                 let cVal = factor * (gray - 128) + 128;
                 if (cVal > 255) cVal = 255; if (cVal < 0) cVal = 0;
-                let final = (cVal > 100) ? 255 : 0; 
+                
+                // Seuil un peu plus bas pour bien fermer les boucles des 8
+                let final = (cVal > 90) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = final; 
             }
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- CORRECTION INTELLIGENTE (Dictionnaire) ---
+        // --- DICTIONNAIRE DE CORRECTION ---
         function smartCorrection(text) {
-            // Nettoyage de base : majuscules + alphanumérique + tiret
             let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-
-            // 1. CORRECTION DES PRÉFIXES (DICTIONNAIRE)
             
-            // OP (0P, QP, DP, O0 -> OP)
+            // Correction Préfixe
             if (clean.match(/^[0QDO][P0]/)) clean = clean.replace(/^[0QDO][P0]/, "OP");
-            
-            // ST (5T, S7, $T -> ST)
             if (clean.match(/^[5$S][T7]/)) clean = clean.replace(/^[5$S][T7]/, "ST");
-            
-            // EB (E8, FB -> EB)
             if (clean.match(/^[EF][B8]/)) clean = clean.replace(/^[EF][B8]/, "EB");
-
-            // PRB (PR8 -> PRB)
             if (clean.startsWith("PR8")) clean = clean.replace("PR8", "PRB");
             
-            // 2. CORRECTION SPÉCIALE : PROMOS "P"
-            // Si ça commence par P et un chiffre direct (ex: P001), on ajoute le tiret (P-001)
-            // On exclut PRB qui commence aussi par P
             if (clean.startsWith("P") && !clean.startsWith("PR") && clean.length > 1 && !isNaN(clean[1]) && clean[1] !== "-") {
                 clean = "P-" + clean.substring(1);
             }
 
-            // 3. CORRECTION CLASSIQUE
             clean = clean.replace(/I/g, "1").replace(/Z/g, "2");
-
             return clean;
         }
 
-        // --- SCAN LOGIQUE ---
+        // --- SCAN UPSCALÉ (HD) ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
             if (isScanning) return;
             isScanning = true;
-            status.innerText = "⚡ Analyse...";
+            status.innerText = "⚡ Analyse HD...";
             
             for (let attempt = 1; attempt <= 3; attempt++) {
                 if (!isScanning) break; 
@@ -267,7 +257,7 @@
                 if (success) { isScanning = false; return; }
                 await new Promise(r => setTimeout(r, 150));
             }
-            status.innerText = "❌ Non reconnu";
+            status.innerText = "❌ Échec";
             isScanning = false;
             setTimeout(() => status.innerText = "Prêt.", 1500);
         };
@@ -277,34 +267,43 @@
             const h = video.videoHeight;
             const zoom = parseFloat(zoomRange.value);
 
-            let cropW = (w * 0.85) / zoom;
-            let cropH = (h * 0.40) / zoom;
+            // 1. Découpage standard
+            let rawW = (w * 0.85) / zoom;
+            let rawH = (h * 0.40) / zoom;
             let pivotX = w * 0.50;
             let pivotY = h * 0.66;
-            let cropX = pivotX - (cropW / 2);
-            let cropY = pivotY - (cropH / 2);
+            let rawX = pivotX - (rawW / 2);
+            let rawY = pivotY - (rawH / 2);
 
-            cropCanvas.width = cropW; cropCanvas.height = cropH;
+            // 2. UPSCALING (Agrandissement x2.5)
+            // C'est ça qui va permettre de distinguer le 8 du 3
+            const scaleFactor = 2.5; 
+            const hdW = rawW * scaleFactor;
+            const hdH = rawH * scaleFactor;
+
+            cropCanvas.width = hdW; cropCanvas.height = hdH;
             const ctx = cropCanvas.getContext('2d');
-            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            
+            // L'astuce : on dessine l'image plus grande qu'elle n'est !
+            // Le navigateur va lisser les pixels, rendant les chiffres plus lisibles.
+            ctx.drawImage(video, rawX, rawY, rawW, rawH, 0, 0, hdW, hdH);
 
-            processImage(ctx, cropW, cropH);
+            processImage(ctx, hdW, hdH);
 
+            // Affiche le résultat agrandi pour debug
+            const dbg = document.getElementById('debugCanvas');
+            dbg.width = hdW; dbg.height = hdH;
+            const dbgCtx = dbg.getContext('2d');
+            dbgCtx.drawImage(cropCanvas, 0, 0);
             document.getElementById('debugCanvasContainer').style.display = 'block';
-            const dbgCtx = debugCanvas.getContext('2d');
-            dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
 
             try {
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
-                    // J'ai ajouté R, L, P, R, B pour les sets PRB, ST, OP
                     tessedit_char_whitelist: 'OPSTEBRLP0123456789-', 
                     tessedit_pageseg_mode: '7' 
                 });
                 
-                // Appel de la correction intelligente
                 let code = smartCorrection(text);
-                
-                // Regex améliorée qui accepte OP, ST, EB, PRB et P
                 let match = code.match(/((OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
