@@ -3,37 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>op-scan V3.1</title>
+    <title>OPCG Visual V4</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
-        /* --- STYLE GLOBAL --- */
+        /* GLOBAL */
         html, body { height: 100%; margin: 0; padding: 0; background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; }
-        
-        /* HEADER */
         .header { background: #f39c12; color: black; padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; z-index: 20; }
         
-        /* VIDEO AREA */
+        /* CAMERA */
         #video-container { position: relative; flex-grow: 1; background: black; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* CADRE DE SCAN */
         #focus-zone { position: absolute; width: 85%; height: 120px; border: 3px solid #f39c12; border-radius: 8px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); pointer-events: none; z-index: 10; }
         .scanning-line { position: absolute; width: 100%; height: 2px; background: rgba(243, 156, 18, 0.7); top: 0; animation: scanMove 2s infinite linear; }
         @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
 
-        /* BOUTONS & UI */
+        /* UI */
         .ui { background: #1a1a1a; padding: 15px; border-top: 2px solid #f39c12; z-index: 20; }
         .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px; }
-        
         button { padding: 16px; width: 100%; max-width: 400px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; margin: 5px auto; display: block; }
         .btn-scan { background: #f39c12; color: black; }
         .btn-manual { background: #333; color: #f39c12; border: 1px solid #f39c12; }
         .btn-tool { background: #444; color: white; width: auto; padding: 8px 15px; font-size: 12px; margin:0; }
-        
         #status { margin-bottom: 5px; color: #f1c40f; font-weight: bold; font-size: 14px; text-align: center;}
         input[type=range] { width: 60%; accent-color: #f39c12; }
 
-        /* MODAL */
+        /* POPUP RÉSULTAT (VISUEL) */
+        #resultModal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 200;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        .card-preview {
+            width: auto; height: 60vh; max-width: 90%; border-radius: 10px; border: 2px solid #f39c12;
+            margin-bottom: 15px; box-shadow: 0 0 20px rgba(243, 156, 18, 0.5); object-fit: contain;
+            background: #222; /* Fond gris si image pas chargée */
+        }
+        .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
+        .card-info h2 { color: #f39c12; margin: 0 0 5px 0; font-size: 24px;}
+        .tag { background: #333; padding: 5px 10px; border-radius: 5px; font-size: 14px; margin: 0 5px; border: 1px solid #555; }
+        
+        /* MODAL MANUEL */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
         input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
@@ -43,26 +52,41 @@
 
     <audio id="beepSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
 
+    <div id="resultModal">
+        <img id="resImage" class="card-preview" src="" onerror="this.style.display='none'">
+        
+        <div class="card-info">
+            <h2 id="resCode">...</h2>
+            <div id="resName" style="font-size: 20px; margin-bottom: 15px; font-weight: bold;">Chargement...</div>
+            <div style="margin-bottom: 15px;">
+                <span id="resRarity" class="tag">Rareté</span>
+                <span id="resColor" class="tag">Couleur</span>
+            </div>
+            <div style="font-size: 22px; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 10px; border-radius: 10px;">
+                En Stock : <b id="resQty">1</b>
+            </div>
+        </div>
+        <button class="btn-scan" onclick="closeResult()">SCANNER SUIVANT</button>
+    </div>
+
     <div class="header">
-        <span>op-scan V3.1</span>
+        <span>OPCG VISUAL V4</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
-        <div id="focus-zone">
-            <div class="scanning-line"></div>
-        </div>
+        <div id="focus-zone"><div class="scanning-line"></div></div>
     </div>
 
     <div class="ui">
-        <div id="status">Chargement caméra...</div>
+        <div id="status">Démarrage...</div>
         <div class="controls">
             <span>ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
         <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
-        <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
+        <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
 
     <div id="modalManual" class="modal">
@@ -77,195 +101,137 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-    // =================================================================
-    // URL DE TON SCRIPT GOOGLE (Déjà intégrée)
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
-    // =================================================================
+        // 👇👇 COLLE TON URL GOOGLE SCRIPT ICI 👇👇
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjDtEBHojLSx7vUS7ZXqTTHWsTOtJq_XmQzrInIHs0LrsFKXfpvJvfTvCciHy0Jr9F/exec"; 
 
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const status = document.getElementById('status');
-    const flashBtn = document.getElementById('flashBtn');
-    const zoomRange = document.getElementById('zoomRange');
-    const beepSound = document.getElementById('beepSound');
-    let track = null;
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const status = document.getElementById('status');
+        const flashBtn = document.getElementById('flashBtn');
+        const zoomRange = document.getElementById('zoomRange');
+        const beepSound = document.getElementById('beepSound');
+        const resultModal = document.getElementById('resultModal');
+        let track = null;
 
-    // --- 1. DÉMARRAGE CAMÉRA (VERSION ROBUSTE) ---
-    async function startCamera() {
-        status.innerText = "Démarrage caméra...";
-        
-        // Vérification de sécurité (HTTPS)
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("⚠️ ERREUR : Impossible d'accéder à la caméra.\nVérifie que tu es bien en HTTPS (pas de http:// ou file://).");
-            status.innerText = "Erreur : Non sécurisé (HTTPS requis)";
-            return;
-        }
-
-        try {
-            // On demande la caméra arrière ("environment")
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
-            });
-            
-            video.srcObject = stream;
-            
-            // On attend que la vidéo charge pour activer les fonctions
-            video.onloadedmetadata = () => {
-                const tracks = stream.getVideoTracks();
-                if (tracks.length > 0) {
-                    track = tracks[0];
+        // --- CAMERA ---
+        async function startCamera() {
+            status.innerText = "Caméra...";
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Erreur: HTTPS requis."); return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    track = stream.getVideoTracks()[0];
                     status.innerText = "Prêt à scanner";
-                } else {
-                    status.innerText = "Erreur piste vidéo";
+                };
+            } catch (err) { alert("Erreur Caméra: " + err.message); }
+        }
+        startCamera();
+
+        zoomRange.oninput = () => { if (track) try { track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); } catch(e){} };
+
+        let isFlashOn = false;
+        flashBtn.onclick = async () => {
+            if (!track) return;
+            try { isFlashOn = !isFlashOn; await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }); } 
+            catch (e) { isFlashOn = !isFlashOn; alert("Flash indisponible"); }
+        };
+
+        function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
+        function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
+        function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt à scanner"; }
+
+        // --- ENVOI DES DONNÉES ---
+        async function sendData(cardId) {
+            status.innerText = "⏳ Recherche " + cardId + "...";
+            try {
+                // On utilise le mode standard (sans 'no-cors') pour LIRE la réponse
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ id: cardId })
+                });
+
+                // Si le fetch marche, on lit le JSON envoyé par le script
+                const data = await response.json(); 
+
+                if (data.status === "success" || data.status === "updated" || data.status === "created") {
+                    
+                    // Remplissage des infos
+                    document.getElementById('resCode').innerText = data.id || cardId;
+                    document.getElementById('resName').innerText = data.name || "Nom inconnu";
+                    document.getElementById('resRarity').innerText = data.rarity || "??";
+                    document.getElementById('resColor').innerText = data.color || "-";
+                    document.getElementById('resQty').innerText = data.qty || "1";
+                    
+                    // Gestion de l'image
+                    const img = document.getElementById('resImage');
+                    if (data.image && data.image.includes("http")) {
+                        img.src = data.image; // L'URL calculée par le script !
+                        img.style.display = "block";
+                    } else {
+                        img.style.display = "none";
+                    }
+
+                    // Affichage du popup
+                    resultModal.style.display = 'flex';
                 }
-            };
 
-        } catch (err) {
-            console.error(err);
-            status.innerText = "❌ Caméra bloquée/refusée";
-            alert("Erreur Caméra : " + err.message + "\n\n1. Vérifie les permissions.\n2. Vérifie que le site est en HTTPS.");
-        }
-    }
-    
-    // Lancement immédiat
-    startCamera();
-
-    // --- 2. GESTION DU ZOOM ---
-    zoomRange.oninput = () => {
-        if (track) {
-            try { 
-                track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); 
-            } catch(e) {
-                console.log("Zoom non supporté");
+            } catch (e) { 
+                console.error(e);
+                // Si l'affichage plante (souvent à cause de Google CORS), on confirme quand même l'ajout
+                status.innerText = "✅ Ajouté (Affichage bloqué par Google)";
+                setTimeout(() => status.innerText = "Prêt", 2000);
             }
         }
-    };
 
-    // --- 3. GESTION DU FLASH ---
-    let isFlashOn = false;
-    flashBtn.onclick = async () => {
-        if (!track) { 
-            alert("La caméra n'est pas encore prête !"); 
-            return; 
-        }
-        
-        try {
-            isFlashOn = !isFlashOn;
-            await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
-            flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
-        } catch (e) {
-            // Si ça échoue, on annule le changement d'état
-            isFlashOn = !isFlashOn; 
-            alert("Le flash ne semble pas compatible avec ce navigateur/téléphone.");
-        }
-    };
+        // --- SCANNER ---
+        document.getElementById('scanBtn').onclick = async () => {
+            status.innerText = "🔍 Analyse...";
+            const ctx = canvas.getContext('2d');
+            const w = video.videoWidth; const h = video.videoHeight;
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(video, 0, 0, w, h);
 
-    // --- 4. MODAL MANUEL ---
-    function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
-    function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
-
-    // --- 5. ENVOI DES DONNÉES (Google Sheet) ---
-    async function sendData(cardId) {
-        status.innerText = "⏳ Envoi de " + cardId + "...";
-        try {
-            await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors', // Indispensable pour Google Script
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: cardId })
-            });
-            // En no-cors, on ne reçoit pas de réponse JSON, on suppose que c'est bon
-            status.innerText = "✅ " + cardId + " (QTE +1)";
-            setTimeout(() => { status.innerText = "Prêt à scanner"; }, 2000);
-        } catch (e) { 
-            console.error(e);
-            status.innerText = "❌ Erreur connexion Internet"; 
-        }
-    }
-
-    // --- 6. FONCTION DE SCAN INTELLIGENTE ---
-    document.getElementById('scanBtn').onclick = async () => {
-        if (!video.videoWidth) {
-            status.innerText = "Attente caméra...";
-            return;
-        }
-
-        status.innerText = "🔍 Analyse en cours...";
-        const ctx = canvas.getContext('2d');
-        
-        // Récupération dimensions réelles
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        
-        canvas.width = w;
-        canvas.height = h;
-        
-        // 1. Capture image
-        ctx.drawImage(video, 0, 0, w, h);
-
-        // 2. Traitement d'image (Noir & Blanc fort)
-        let imgData = ctx.getImageData(0, 0, w, h);
-        let d = imgData.data;
-        for (let i = 0; i < d.length; i += 4) {
-            // Formule luminosité
-            let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-            // Seuil de coupure (Tout ce qui est gris devient noir, le reste blanc)
-            let val = (gray > 100) ? 255 : 0;
-            d[i] = d[i+1] = d[i+2] = val;
-        }
-        ctx.putImageData(imgData, 0, 0);
-        
-        // 3. Reconnaissance OCR
-        try {
-            const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-                tessedit_char_whitelist: 'OPSTEB0123456789-' // Liste blanche stricte
-            });
-            
-            // 4. Nettoyage et Logique de correction
-            let clean = text.toUpperCase().replace(/\s/g, '')
-                            .replace(/[QD]/g, "0") // Q et D deviennent 0
-                            .replace(/I/g, "1")
-                            .replace(/Z/g, "2");
-
-            // --- CORRECTIONS SPÉCIFIQUES ---
-            
-            // Règle spéciale : Si ça commence par P suivi de 2 chiffres (ex: P09-001) -> OP09-001
-            clean = clean.replace(/^P(\d{2}-)/, "OP$1");
-
-            // Correction classique 0P -> OP
-            if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
-            
-            // Correction O vs 0 dans les chiffres
-            // On garde le préfixe (2 lettres) et on force les 0 dans le reste
-            if (clean.length > 4) {
-                let prefix = clean.substring(0, 2);
-                let suffix = clean.substring(2).replace(/O/g, "0");
-                clean = prefix + suffix;
+            // Binarisation
+            let imgData = ctx.getImageData(0, 0, w, h);
+            let d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+                let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+                let val = (gray > 100) ? 255 : 0;
+                d[i] = d[i+1] = d[i+2] = val;
             }
+            ctx.putImageData(imgData, 0, 0);
+            
+            try {
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', { tessedit_char_whitelist: 'OPSTEB0123456789-' });
+                
+                // Nettoyage et Correction P -> OP
+                let clean = text.toUpperCase().replace(/\s/g, '').replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
+                clean = clean.replace(/^P(\d{2}-)/, "OP$1"); // P09 -> OP09
+                
+                if (clean.startsWith("0P")) clean = "OP" + clean.substring(2);
+                if (clean.length > 4) { let p = clean.substring(0, 2); let s = clean.substring(2).replace(/O/g, "0"); clean = p + s; }
+                if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
+                if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
 
-            // Corrections Starters et Extra Boosters
-            if (clean.startsWith("0B")) clean = "EB" + clean.substring(2);
-            if (clean.startsWith("5T")) clean = "ST" + clean.substring(2);
+                let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
 
-            // 5. Validation finale (Regex)
-            // Accepte : OP01-001, ST01-001, EB01-001, P-001
-            let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
+                if (match) {
+                    beepSound.play();
+                    sendData(match[0]);
+                } else {
+                    status.innerText = "❌ Code: " + clean.substring(0,8);
+                    setTimeout(() => status.innerText = "Prêt", 1500);
+                }
+            } catch (e) { status.innerText = "Erreur OCR"; }
+        };
 
-            if (match) {
-                beepSound.play();
-                sendData(match[0]);
-            } else {
-                status.innerText = "❌ Code lu : " + clean.substring(0, 10);
-                setTimeout(() => status.innerText = "Prêt à scanner", 1500);
-            }
-        } catch (e) { 
-            console.error(e);
-            status.innerText = "Erreur OCR interne"; 
+        function submitManual() {
+            const val = document.getElementById('manualInput').value.toUpperCase();
+            if (val) { hideManual(); sendData(val); }
         }
-    };
-
-    function submitManual() {
-        const val = document.getElementById('manualInput').value.toUpperCase();
-        if (val) { hideManual(); sendData(val); }
-    }
-</script>
+    </script>
+</body>
+</html>
