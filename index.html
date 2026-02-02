@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Ultimate Scanner (1080p)</title>
+    <title>OPCG Scanner (Calibré)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -13,7 +13,7 @@
             background: #121212; color: white; 
             font-family: 'Segoe UI', sans-serif; 
             display: flex; flex-direction: column; 
-            overflow: hidden; /* Empêche le scroll pendant le scan */
+            overflow: hidden; 
         }
 
         /* HEADER */
@@ -35,16 +35,16 @@
             width: 100%; height: 100%; object-fit: cover; 
         }
         
-        /* CADRE DE SCAN (ZONE CIBLE) */
-        /* C'est ici qu'on vise le code */
+        /* CADRE DE SCAN (ZONE VISUELLE) */
+        /* J'ai remonté un peu le cadre (bottom: 20%) pour être plus ergonomique */
         #focus-zone { 
             position: absolute; 
-            width: 70%; height: 15%; 
-            bottom: 15%; /* Positionné en bas */
-            left: 15%;
-            border: 3px solid #00ff00; /* Vert fluo */
+            width: 80%; height: 18%; /* Un peu plus grand */
+            bottom: 20%; 
+            left: 10%;
+            border: 3px solid #00ff00; 
             border-radius: 8px; 
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.7); /* Assombrit le reste */
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
             z-index: 10; 
             display: flex; justify-content: center;
         }
@@ -56,7 +56,6 @@
             font-size: 12px; font-weight: bold;
         }
 
-        /* LIGNE DE SCAN ANIMÉE */
         .scanning-line { 
             position: absolute; width: 100%; height: 2px; 
             background: #00ff00; top: 0; 
@@ -76,7 +75,6 @@
             gap: 15px; margin-bottom: 15px; 
         }
         
-        /* BOUTONS */
         button { 
             padding: 15px; width: 100%; max-width: 400px; 
             border-radius: 12px; border: none; 
@@ -106,14 +104,13 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 20px; width: 90%; }
         
-        /* DEBUG VISUEL (Petit écran en bas à gauche pour voir ce que l'IA voit) */
+        /* DEBUG VISUEL (Pour vérifier le cadrage si besoin) */
         #debugCanvasContainer { 
             position:absolute; bottom: 180px; left:10px; 
-            z-index:50; border: 1px solid #00ff00; 
+            z-index:50; border: 1px solid lime; 
             display:none; background:black;
         }
 
-        /* MODAL MANUEL */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .modal-box { background: #222; padding: 25px; border-radius: 15px; width: 85%; border: 2px solid #f39c12; text-align: center; }
         input[type=text] { width: 80%; padding: 15px; font-size: 20px; text-transform: uppercase; text-align: center; border-radius: 10px; border: 1px solid #f39c12; background: black; color: white; margin-bottom: 20px; }
@@ -135,7 +132,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (Auto)</span>
+        <span>OPCG SCANNER (V14)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -154,12 +151,10 @@
 
     <div class="ui">
         <div id="status">Initialisation...</div>
-        
         <div class="controls">
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
             <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
         </div>
-        
         <button class="btn-scan" id="scanBtn">📸 SCANNER</button>
         <button class="btn-manual" onclick="showManual()">⌨️ SAISIE MANUELLE</button>
     </div>
@@ -176,10 +171,8 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        // =========================================================
-        // 👇👇 TON URL GOOGLE APPS SCRIPT DOIT ÊTRE ICI 👇👇
+        // 👇👇 TON URL ICI 👇👇
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVbW1-dcFF6Sup_cnaJsEWA2ID8FlG_ScspfYhtCmgGVDrMXc07iN-B---UR-yGgnC/exec"; 
-        // =========================================================
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
@@ -190,24 +183,17 @@
         const beepSound = document.getElementById('beepSound');
         const resultModal = document.getElementById('resultModal');
         const resImage = document.getElementById('resImage');
-        
-        // Canvas spécial pour le rognage (Crop)
         const cropCanvas = document.createElement('canvas');
-        
         let track = null;
 
-        // --- 1. DÉMARRAGE CAMÉRA (1080p + AUTO) ---
         async function startCamera() {
             status.innerText = "Chargement caméra...";
-            
-            // Contraintes : Full HD (1920x1080) + Mode Automatique Continu
             const constraints = { 
                 audio: false,
                 video: { 
-                    facingMode: "environment", // Caméra arrière
+                    facingMode: "environment", 
                     width: { ideal: 1920 },  
                     height: { ideal: 1080 },
-                    // Force l'autofocus et l'exposition auto
                     advanced: [
                         { focusMode: "continuous" }, 
                         { exposureMode: "continuous" },
@@ -219,169 +205,105 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                
                 video.onloadedmetadata = () => {
                     track = stream.getVideoTracks()[0];
-                    status.innerText = "Prêt. Placez le code dans le cadre vert.";
+                    status.innerText = "Prêt. Placez le code dans le cadre.";
                 };
             } catch (err) { 
-                console.error("Erreur avancée:", err);
-                status.innerText = "Mode compatibilité activé...";
-                // Fallback (Plan B) si le téléphone ne supporte pas les réglages avancés
+                console.error("Erreur:", err);
+                status.innerText = "Mode Standard activé";
                 try {
                     const streamSimple = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                     video.srcObject = streamSimple;
                     track = streamSimple.getVideoTracks()[0];
-                } catch(e) {
-                    alert("Impossible d'accéder à la caméra.");
-                }
+                } catch(e) { alert("Caméra inaccessible."); }
             }
         }
+        startCamera();
 
-        startCamera(); // Lancer au démarrage
+        zoomRange.oninput = () => { if(track) try{track.applyConstraints({advanced:[{zoom:zoomRange.value}]})}catch(e){} };
 
-        // --- 2. GESTION DU ZOOM ---
-        zoomRange.oninput = () => { 
-            if (track) { 
-                try { track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] }); } catch(e){} 
-            }
-        };
-
-        // --- 3. GESTION DU FLASH ---
         let isFlashOn = false;
         flashBtn.onclick = async () => {
             if (!track) return;
-            try { 
-                isFlashOn = !isFlashOn; 
-                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }); 
-                flashBtn.style.background = isFlashOn ? "#f39c12" : "#444";
-                flashBtn.style.color = isFlashOn ? "black" : "white";
-            } 
-            catch (e) { alert("Flash non supporté"); }
+            try { isFlashOn = !isFlashOn; await track.applyConstraints({ advanced: [{ torch: isFlashOn }] }); flashBtn.style.background = isFlashOn ? "#f39c12" : "#444"; flashBtn.style.color = isFlashOn ? "black" : "white"; } catch (e) { alert("Flash non supporté"); }
         };
 
-        // --- FONCTIONS UI ---
         function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         function closeResult() { resultModal.style.display = 'none'; status.innerText = "Prêt."; }
 
-        // --- 4. ENVOI DES DONNÉES ---
         async function sendData(cardId) {
-            status.innerText = "⏳ Sauvegarde en cours...";
+            status.innerText = "⏳ Sauvegarde...";
             document.getElementById('resCode').innerText = cardId;
-            
-            // Charge l'image depuis les serveurs officiels
             const serverUS = "https://en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
             const serverASIA = "https://asia-en.onepiece-cardgame.com/images/cardlist/card/" + cardId + ".png";
-            
             resImage.src = serverUS;
             resImage.onerror = function() { resImage.src = serverASIA; };
-            
             resultModal.style.display = 'flex';
-            
-            const formData = new URLSearchParams();
-            formData.append('id', cardId);
-
-            try {
-                await fetch(GOOGLE_SCRIPT_URL, { 
-                    method: 'POST', 
-                    mode: 'no-cors', 
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
-                    body: formData 
-                });
-                status.innerText = "✅ Carte sauvegardée !";
-            } catch (e) { status.innerText = "⚠️ Sauvegardé (mais erreur réseau affichée)"; }
+            const formData = new URLSearchParams(); formData.append('id', cardId);
+            try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Sauvegardé (erreur réseau)"; }
         }
 
-        // --- 5. COEUR DU SYSTÈME : LE SCAN INTELLIGENT ---
+        // --- C'EST ICI QUE J'AI CORRIGÉ L'ALIGNEMENT ---
         document.getElementById('scanBtn').onclick = async () => {
-            status.innerText = "⚡ Analyse ciblée...";
+            status.innerText = "⚡ Analyse...";
             
             const w = video.videoWidth;
             const h = video.videoHeight;
 
-            // --- A. DÉCOUPAGE (CROP) ---
-            // On ne regarde que la zone verte (Bas de l'écran)
-            // Correspond aux CSS: width 70%, height 15%, bottom 15%
-            const cropW = w * 0.70; 
-            const cropH = h * 0.15;
+            // ZONE LOGIQUE AGRANDIE (Pour régler ton problème)
+            // Au lieu de scanner juste une petite bande, on scanne une zone plus haute.
+            // On commence à 60% de la hauteur et on va jusqu'à 95% du bas.
+            // Ça fait une "grosse" zone de détection qui englobe largement le carré vert.
+            const cropW = w * 0.80; // 80% de la largeur (plus large qu'avant)
+            const cropH = h * 0.35; // 35% de la hauteur (beaucoup plus haut qu'avant)
+            
             const cropX = (w - cropW) / 2; 
-            const cropY = h - (h * 0.30); // Position approximative correspondant au cadre visuel
+            const cropY = h - (h * 0.40); // On commence plus haut pour être sûr d'attraper le code
 
             cropCanvas.width = cropW;
             cropCanvas.height = cropH;
             const ctx = cropCanvas.getContext('2d');
-
-            // Dessine uniquement la zone du code
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-            // --- B. TRAITEMENT D'IMAGE (POUR AIDER L'IA) ---
             let imgData = ctx.getImageData(0, 0, cropW, cropH);
             let d = imgData.data;
-            
             for (let i = 0; i < d.length; i += 4) {
-                // 1. Grayscale (Niveaux de gris)
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-                
-                // 2. Thresholding + Inversion
-                // Le texte est BLANC sur fond FONCÉ. 
-                // Tesseract aime le texte NOIR sur fond BLANC.
-                // Si le pixel est clair (texte) -> devient NOIR (0)
-                // Si le pixel est foncé (fond) -> devient BLANC (255)
                 let val = (gray > 100) ? 0 : 255; 
-                
                 d[i] = d[i+1] = d[i+2] = val; 
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // Affiche le résultat vu par l'IA dans le petit écran de debug
+            // Debug visible si tu veux vérifier ce que l'IA voit
             document.getElementById('debugCanvasContainer').style.display = 'block';
             const dbgCtx = debugCanvas.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
 
-            // --- C. RECONNAISSANCE (TESSERACT) ---
             try {
                 const { data: { text } } = await Tesseract.recognize(cropCanvas, 'eng', { 
-                    // On n'autorise que les caractères possibles pour One Piece
                     tessedit_char_whitelist: 'OPSTEB0123456789-', 
-                    // Mode 7 = "Treat image as a single text line" (TRES IMPORTANT POUR LA VITESSE)
                     tessedit_pageseg_mode: '7' 
                 });
                 
-                // --- D. NETTOYAGE & CORRECTION ---
-                let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, ""); // Supprime le bruit
-                
-                // Corrections d'erreurs fréquentes de l'IA
-                clean = clean.replace(/[QD]/g, "0")  // Q ou D deviennent 0
-                             .replace(/I/g, "1")     // I devient 1
-                             .replace(/Z/g, "2");    // Z devient 2
-
-                // Regex : Cherche le format exact (ex: OP05-001 ou ST01-005)
+                let clean = text.toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/[QD]/g, "0").replace(/I/g, "1").replace(/Z/g, "2");
                 let match = clean.match(/([A-Z]{1,2}\d{2}-\d{3}|P-\d{3})/);
 
                 if (match) {
                     let code = match[0];
-                    
-                    // Dernières corrections logiques
-                    if (code.startsWith("P") && code[1] !== "-") code = "O" + code; // P01 -> OP01
+                    if (code.startsWith("P") && code[1] !== "-") code = "O" + code;
                     if (code.startsWith("0P")) code = "OP" + code.substring(2);
-
-                    // SUCCÈS !
                     beepSound.play();
                     sendData(code);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
                 } else {
-                    // ÉCHEC
-                    status.innerText = "❌ Non reconnu. Réessayez.";
+                    status.innerText = "❌ Non reconnu";
                     setTimeout(() => status.innerText = "Prêt.", 1000);
                 }
-            } catch (e) { 
-                console.error(e);
-                status.innerText = "Erreur lecture."; 
-            }
+            } catch (e) { status.innerText = "Erreur lecture."; }
         };
 
-        // Validation manuelle
         function submitManual() {
             const val = document.getElementById('manualInput').value.toUpperCase();
             if (val) { hideManual(); sendData(val); }
