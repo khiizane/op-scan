@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V17 - STABLE)</title>
+    <title>OPCG Scanner (V18 - Zoom Fix)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -23,13 +23,18 @@
             z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
 
+        /* CONTAINER CAMÉRA */
         #video-container { 
             position: relative; flex-grow: 1; 
-            background: black; overflow: hidden; 
+            background: black; overflow: hidden; /* Important pour masquer ce qui dépasse du zoom */
             display: flex; align-items: center; justify-content: center; 
         }
         
-        video { width: 100%; height: 100%; object-fit: cover; }
+        video { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transition: transform 0.1s ease-out; /* Fluidifie le zoom */
+            transform-origin: center 65%; /* On zoom vers le bas (là où est le cadre vert) */
+        }
         
         /* CADRE VERT */
         #focus-zone { 
@@ -115,7 +120,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V17)</span>
+        <span>OPCG SCANNER (V18)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -129,9 +134,9 @@
         <div id="status">Initialisation...</div>
         <div class="controls">
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
-            <input type="range" id="zoomRange" min="1" max="5" step="0.1" value="1">
+            <input type="range" id="zoomRange" min="1" max="3" step="0.1" value="1">
         </div>
-        <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO-STABILISÉ)</button>
+        <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO)</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
     </div>
 
@@ -166,12 +171,7 @@
                 video: { 
                     facingMode: "environment", 
                     width: { ideal: 1920 }, height: { ideal: 1080 },
-                    // On demande au téléphone de stabiliser l'image si possible
-                    advanced: [
-                        { focusMode: "continuous" }, 
-                        { exposureMode: "continuous" },
-                        { imageStabilization: true } 
-                    ]
+                    advanced: [{ focusMode: "continuous" }, { exposureMode: "continuous" }]
                 } 
             };
             try {
@@ -182,7 +182,12 @@
         }
         startCamera();
 
-        zoomRange.oninput = () => { if(track) try{track.applyConstraints({advanced:[{zoom:zoomRange.value}]})}catch(e){} };
+        // --- NOUVEAU SYSTÈME DE ZOOM (VISUEL) ---
+        zoomRange.oninput = () => { 
+            const val = zoomRange.value;
+            // On applique un scale CSS à la vidéo. C'est universel, ça marche partout.
+            video.style.transform = `scale(${val})`;
+        };
 
         let isFlashOn = false;
         flashBtn.onclick = async () => {
@@ -205,84 +210,81 @@
             try { await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); status.innerText = "✅ Sauvegardé !"; } catch (e) { status.innerText = "⚠️ Erreur réseau"; }
         }
 
-        // --- FONCTION DE TRAITEMENT D'IMAGE (Contraste Extrême) ---
+        // --- TRAITEMENT D'IMAGE (Contraste Extrême) ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
-            
-            // Facteur de contraste (Plus c'est haut, plus ça sépare le jaune du noir)
-            // On augmente le contraste de +100%
             const contrast = 100; 
             const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
             for (let i = 0; i < d.length; i += 4) {
-                // 1. Convertir en niveaux de gris
                 let gray = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-
-                // 2. Appliquer le BOOST de contraste
-                // Cela force les gris clairs (jaune) vers le BLANC pur
-                // Et les gris foncés (texte) vers le NOIR pur
                 let cVal = factor * (gray - 128) + 128;
-                
-                // 3. Limiter entre 0 et 255
-                if (cVal > 255) cVal = 255;
-                if (cVal < 0) cVal = 0;
-
-                // 4. Binarisation finale (Noir ou Blanc, pas de gris)
-                let final = (cVal > 100) ? 255 : 0; // Seuil strict
-
+                if (cVal > 255) cVal = 255; if (cVal < 0) cVal = 0;
+                let final = (cVal > 100) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = final; 
             }
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // --- MODE RAFALE (STABILISATEUR LOGICIEL) ---
-        // Cette fonction va essayer de scanner 3 fois de suite rapidement
-        // Si l'une des tentatives marche, elle s'arrête.
+        // --- SCAN INTELLIGENT AVEC ZOOM COMPENSÉ ---
         let isScanning = false;
         
         document.getElementById('scanBtn').onclick = async () => {
             if (isScanning) return;
             isScanning = true;
-            status.innerText = "⚡ Stabilisation & Analyse...";
+            status.innerText = "⚡ Analyse...";
             
-            // On va faire 3 tentatives espacées de 150ms
             for (let attempt = 1; attempt <= 3; attempt++) {
-                if (!isScanning) break; // Si trouvé, on arrête
-                
-                console.log("Tentative " + attempt);
+                if (!isScanning) break; 
                 let success = await performScan();
-                
-                if (success) {
-                    isScanning = false;
-                    return; // Trouvé !
-                }
-                // Petite pause avant la prochaine tentative (laisse la main bouger un peu)
+                if (success) { isScanning = false; return; }
                 await new Promise(r => setTimeout(r, 150));
             }
-            
-            // Si on arrive ici, les 3 ont échoué
-            status.innerText = "❌ Échec (Trop flou ?)";
+            status.innerText = "❌ Échec";
             isScanning = false;
             setTimeout(() => status.innerText = "Prêt.", 1500);
         };
 
         async function performScan() {
             const w = video.videoWidth; const h = video.videoHeight;
-            // Zone élargie (comme avant)
-            const cropW = w * 0.85; const cropH = h * 0.40;
-            const cropX = (w - cropW) / 2; const cropY = h - (h * 0.60);
+            
+            // RÉCUPÉRATION DU NIVEAU DE ZOOM
+            const zoomLevel = parseFloat(zoomRange.value);
+
+            // CALCUL DE LA ZONE À COUPER (CROP)
+            // Plus on zoom, plus la zone coupée est PETITE (car on regarde un détail)
+            
+            // Zone de base (sans zoom) = Largeur 85%, Hauteur 40%
+            let baseW = w * 0.85;
+            let baseH = h * 0.40;
+
+            // Zone ajustée au zoom
+            let cropW = baseW / zoomLevel;
+            let cropH = baseH / zoomLevel;
+
+            // Centre de la zone (On vise le bas de l'image, vers 60% de la hauteur)
+            // Mais attention, avec le zoom CSS 'transform-origin: center 65%', le centre visuel change peu.
+            // On centre le crop horizontalement
+            let cropX = (w - cropW) / 2;
+            
+            // Pour la hauteur, on cible la zone correspondant au cadre vert
+            // Si on zoom, on plonge "à l'intérieur" de l'image
+            let cropY = h - (h * 0.60); 
+            // Petit ajustement : si on zoom fort, on doit recentrer un peu le crop Y
+            if (zoomLevel > 1.5) {
+                // On remonte un peu le point de départ car le zoom grossit autour du point pivot
+                cropY = cropY + (cropH * 0.1); 
+            }
 
             cropCanvas.width = cropW; cropCanvas.height = cropH;
             const ctx = cropCanvas.getContext('2d');
             
-            // Capture l'image actuelle
+            // Capture l'image
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-            // Applique le filtre "Spécial Jaune"
             processImage(ctx, cropW, cropH);
 
-            // Affiche le debug
             document.getElementById('debugCanvasContainer').style.display = 'block';
             const dbgCtx = debugCanvas.getContext('2d');
             dbgCtx.drawImage(cropCanvas, 0, 0, 150, 50);
@@ -303,10 +305,10 @@
                     beepSound.play();
                     sendData(code);
                     document.getElementById('debugCanvasContainer').style.display = 'none';
-                    return true; // SUCCÈS
+                    return true; 
                 }
             } catch (e) { console.log(e); }
-            return false; // ÉCHEC
+            return false;
         }
 
         function submitManual() {
