@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V30 - Input)</title>
+    <title>OPCG Scanner (V31 - Max Zoom)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -86,7 +86,7 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 10px; width: 90%; }
         
-        /* STYLE DU SÉLECTEUR DE QUANTITÉ (Modifié) */
+        /* STYLE DU SÉLECTEUR DE QUANTITÉ */
         .qty-container {
             display: flex; align-items: center; justify-content: center; gap: 10px;
             margin: 15px 0; background: #222; padding: 10px; border-radius: 50px; border: 1px solid #555;
@@ -97,19 +97,11 @@
             cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
         
-        /* C'est ICI qu'on change le style de l'input */
         #qtyInput { 
-            font-size: 30px; 
-            font-weight: bold; 
-            width: 80px; 
-            text-align: center; 
-            color: white; 
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid #f39c12; /* Souligné pour montrer qu'on peut écrire */
-            outline: none;
+            font-size: 30px; font-weight: bold; width: 80px; 
+            text-align: center; color: white; background: transparent;
+            border: none; border-bottom: 2px solid #f39c12; outline: none;
         }
-        /* Cache les flèches du input number sur les navigateurs */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
@@ -146,7 +138,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V30)</span>
+        <span>OPCG SCANNER (V31)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -160,7 +152,7 @@
         <div id="status">Initialisation...</div>
         <div class="controls">
             <span style="font-size:12px; font-weight:bold;">ZOOM</span>
-            <input type="range" id="zoomRange" min="1" max="2.5" step="0.1" value="1">
+            <input type="range" id="zoomRange" min="1" max="5.0" step="0.1" value="1.5">
         </div>
         <button class="btn-scan" id="scanBtn">📸 SCANNER (AUTO)</button>
         <button class="btn-manual" onclick="showManual()">⌨️ MANUEL</button>
@@ -204,7 +196,12 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                video.onloadedmetadata = () => { track = stream.getVideoTracks()[0]; status.innerText = "Prêt."; };
+                video.onloadedmetadata = () => { 
+                    track = stream.getVideoTracks()[0]; 
+                    status.innerText = "Prêt."; 
+                    // On applique le zoom par défaut (1.5) dès le démarrage
+                    video.style.transform = `scale(${zoomRange.value})`;
+                };
             } catch (e) { alert("Erreur caméra."); }
         }
         startCamera();
@@ -220,16 +217,10 @@
         function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         
-        // --- GESTION DE LA VALIDATION ET QUANTITÉ ---
-        
         function prepareScanResult(cardId) {
             currentScannedId = cardId;
-            
             document.getElementById('resCode').innerText = cardId;
-            
-            // On remet la quantité à 1 par défaut, dans l'input
             document.getElementById('qtyInput').value = "1";
-            
             document.getElementById('saveStatus').style.display = 'none';
             document.getElementById('btnValidate').style.display = 'block';
             document.getElementById('btnValidate').innerText = "✅ VALIDER & ENVOYER";
@@ -241,15 +232,12 @@
             resultModal.style.display = 'flex';
         }
 
-        // Fonction pour les boutons + et - qui modifie l'input
         function adjustQty(amount) {
             const input = document.getElementById('qtyInput');
             let val = parseInt(input.value);
             if (isNaN(val)) val = 1;
-            
             val += amount;
             if (val < 1) val = 1;
-            
             input.value = val;
         }
 
@@ -258,7 +246,6 @@
             const statusDiv = document.getElementById('saveStatus');
             const qtyInput = document.getElementById('qtyInput');
             
-            // On récupère la valeur tapée par l'utilisateur
             let finalQty = parseInt(qtyInput.value);
             if (isNaN(finalQty) || finalQty < 1) finalQty = 1;
 
@@ -268,7 +255,7 @@
 
             const fd = new URLSearchParams(); 
             fd.append('id', currentScannedId);
-            fd.append('qty', finalQty); // On envoie la quantité personnalisée
+            fd.append('qty', finalQty); 
             
             try { 
                 await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
@@ -285,7 +272,6 @@
             status.innerText = "Prêt.";
         }
 
-        // --- TRAITEMENT IMAGE ---
         function processImage(ctx, w, h) {
             let imgData = ctx.getImageData(0, 0, w, h);
             let d = imgData.data;
