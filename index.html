@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V29 - Quantité)</title>
+    <title>OPCG Scanner (V30 - Input)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -86,9 +86,9 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 10px; width: 90%; }
         
-        /* STYLE DU SÉLECTEUR DE QUANTITÉ */
+        /* STYLE DU SÉLECTEUR DE QUANTITÉ (Modifié) */
         .qty-container {
-            display: flex; align-items: center; justify-content: center; gap: 20px;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
             margin: 15px 0; background: #222; padding: 10px; border-radius: 50px; border: 1px solid #555;
         }
         .qty-btn {
@@ -96,7 +96,22 @@
             background: #f39c12; color: black; font-size: 24px; font-weight: bold;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
-        #qtyValue { font-size: 30px; font-weight: bold; width: 50px; text-align: center; color: white; }
+        
+        /* C'est ICI qu'on change le style de l'input */
+        #qtyInput { 
+            font-size: 30px; 
+            font-weight: bold; 
+            width: 80px; 
+            text-align: center; 
+            color: white; 
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid #f39c12; /* Souligné pour montrer qu'on peut écrire */
+            outline: none;
+        }
+        /* Cache les flèches du input number sur les navigateurs */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
         #debugCanvasContainer { display:none; }
 
@@ -113,11 +128,11 @@
         <img id="resImage" class="card-preview" src="" alt="Chargement...">
         <div class="card-info">
             <h2 id="resCode" style="color:#f39c12; font-size:32px; margin:0;">...</h2>
-            <div style="font-size: 16px; color: #ccc;">Confirmez la quantité :</div>
+            <div style="font-size: 16px; color: #ccc;">Quantité :</div>
             
             <div class="qty-container">
                 <button class="qty-btn" onclick="adjustQty(-1)">-</button>
-                <div id="qtyValue">1</div>
+                <input type="number" id="qtyInput" value="1" min="1">
                 <button class="qty-btn" onclick="adjustQty(1)">+</button>
             </div>
 
@@ -131,7 +146,7 @@
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V29)</span>
+        <span>OPCG SCANNER (V30)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -174,8 +189,7 @@
         const cropCanvas = document.createElement('canvas');
         
         let track = null;
-        let currentScannedId = ""; // Stocke l'ID en attente de validation
-        let currentQuantity = 1;
+        let currentScannedId = ""; 
 
         async function startCamera() {
             status.innerText = "Chargement caméra...";
@@ -206,14 +220,16 @@
         function showManual() { document.getElementById('modalManual').style.display = 'flex'; }
         function hideManual() { document.getElementById('modalManual').style.display = 'none'; }
         
-        // --- GESTION DE LA VALIDATION ---
+        // --- GESTION DE LA VALIDATION ET QUANTITÉ ---
         
         function prepareScanResult(cardId) {
             currentScannedId = cardId;
-            currentQuantity = 1; // Reset à 1
             
             document.getElementById('resCode').innerText = cardId;
-            document.getElementById('qtyValue').innerText = "1";
+            
+            // On remet la quantité à 1 par défaut, dans l'input
+            document.getElementById('qtyInput').value = "1";
+            
             document.getElementById('saveStatus').style.display = 'none';
             document.getElementById('btnValidate').style.display = 'block';
             document.getElementById('btnValidate').innerText = "✅ VALIDER & ENVOYER";
@@ -225,38 +241,48 @@
             resultModal.style.display = 'flex';
         }
 
+        // Fonction pour les boutons + et - qui modifie l'input
         function adjustQty(amount) {
-            currentQuantity += amount;
-            if (currentQuantity < 1) currentQuantity = 1;
-            document.getElementById('qtyValue').innerText = currentQuantity;
+            const input = document.getElementById('qtyInput');
+            let val = parseInt(input.value);
+            if (isNaN(val)) val = 1;
+            
+            val += amount;
+            if (val < 1) val = 1;
+            
+            input.value = val;
         }
 
         async function confirmAndSend() {
             const btn = document.getElementById('btnValidate');
             const statusDiv = document.getElementById('saveStatus');
+            const qtyInput = document.getElementById('qtyInput');
             
+            // On récupère la valeur tapée par l'utilisateur
+            let finalQty = parseInt(qtyInput.value);
+            if (isNaN(finalQty) || finalQty < 1) finalQty = 1;
+
             btn.style.display = 'none';
             statusDiv.style.display = 'block';
-            statusDiv.innerText = "🚀 ENVOI EN COURS...";
+            statusDiv.innerText = "🚀 ENVOI DE " + finalQty + " EXEMPLAIRE(S)...";
 
             const fd = new URLSearchParams(); 
             fd.append('id', currentScannedId);
-            fd.append('qty', currentQuantity); // On envoie la quantité choisie
+            fd.append('qty', finalQty); // On envoie la quantité personnalisée
             
             try { 
                 await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
                 statusDiv.innerText = "✅ SAUVEGARDÉ !"; 
-                setTimeout(closeResult, 1000); // Ferme auto après 1s
+                setTimeout(closeResult, 1000); 
             } catch (e) { 
                 statusDiv.innerText = "⚠️ Erreur réseau"; 
-                btn.style.display = 'block'; // Réaffiche le bouton si échec
+                btn.style.display = 'block'; 
             }
         }
 
         function closeResult() {
             resultModal.style.display = 'none';
             status.innerText = "Prêt.";
-            // On s'assure que le scanneur peut redémarrer si besoin
         }
 
         // --- TRAITEMENT IMAGE ---
@@ -335,7 +361,6 @@
 
                 if (match) {
                     beepSound.play();
-                    // Au lieu d'envoyer, on ouvre la fenêtre de validation
                     prepareScanResult(match[0]); 
                     return true; 
                 }
@@ -345,7 +370,7 @@
 
         function submitManual() {
             const val = document.getElementById('manualInput').value.toUpperCase();
-            if (val) { hideManual(); prepareScanResult(val); } // Ouvre aussi la validation
+            if (val) { hideManual(); prepareScanResult(val); }
         }
     </script>
 </body>
