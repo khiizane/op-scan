@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OPCG Scanner (V31 - Max Zoom)</title>
+    <title>OPCG Scanner (V32 - Turbo)</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     
     <style>
@@ -86,7 +86,6 @@
         }
         .card-info { text-align: center; color: white; margin-bottom: 10px; width: 90%; }
         
-        /* STYLE DU SÉLECTEUR DE QUANTITÉ */
         .qty-container {
             display: flex; align-items: center; justify-content: center; gap: 10px;
             margin: 15px 0; background: #222; padding: 10px; border-radius: 50px; border: 1px solid #555;
@@ -132,13 +131,13 @@
             <button style="background:transparent; border:1px solid #555; color:#aaa; margin-top:10px; padding:10px;" onclick="closeResult()">Annuler</button>
             
             <div id="saveStatus" style="font-size: 16px; color: #2ecc71; margin-top:10px; display:none;">
-                🚀 ENVOI EN COURS...
+                🚀 ENVOI...
             </div>
         </div>
     </div>
 
     <div class="header">
-        <span>OPCG SCANNER (V31)</span>
+        <span>OPCG SCANNER (V32)</span>
         <button class="btn-tool" id="flashBtn">🔦 FLASH</button>
     </div>
 
@@ -199,7 +198,6 @@
                 video.onloadedmetadata = () => { 
                     track = stream.getVideoTracks()[0]; 
                     status.innerText = "Prêt."; 
-                    // On applique le zoom par défaut (1.5) dès le démarrage
                     video.style.transform = `scale(${zoomRange.value})`;
                 };
             } catch (e) { alert("Erreur caméra."); }
@@ -241,7 +239,8 @@
             input.value = val;
         }
 
-        async function confirmAndSend() {
+        // --- LA FONCTION TURBO ---
+        function confirmAndSend() {
             const btn = document.getElementById('btnValidate');
             const statusDiv = document.getElementById('saveStatus');
             const qtyInput = document.getElementById('qtyInput');
@@ -249,22 +248,28 @@
             let finalQty = parseInt(qtyInput.value);
             if (isNaN(finalQty) || finalQty < 1) finalQty = 1;
 
+            // 1. FEEDBACK INSTANTANÉ (On attend pas la réponse)
             btn.style.display = 'none';
             statusDiv.style.display = 'block';
-            statusDiv.innerText = "🚀 ENVOI DE " + finalQty + " EXEMPLAIRE(S)...";
+            statusDiv.innerText = "🚀 ENVOI RAPIDE...";
 
+            // 2. ENVOI EN ARRIÈRE-PLAN
             const fd = new URLSearchParams(); 
             fd.append('id', currentScannedId);
             fd.append('qty', finalQty); 
             
-            try { 
-                await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }); 
-                statusDiv.innerText = "✅ SAUVEGARDÉ !"; 
-                setTimeout(closeResult, 1000); 
-            } catch (e) { 
-                statusDiv.innerText = "⚠️ Erreur réseau"; 
-                btn.style.display = 'block'; 
-            }
+            // On utilise fetch sans 'await'. Le code continue tout de suite.
+            fetch(GOOGLE_SCRIPT_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
+                body: fd 
+            }).catch(e => console.log("Erreur background", e));
+
+            // 3. FERMETURE ULTRA RAPIDE (0.5 seconde juste pour voir le message vert)
+            setTimeout(() => {
+                closeResult();
+            }, 500);
         }
 
         function closeResult() {
